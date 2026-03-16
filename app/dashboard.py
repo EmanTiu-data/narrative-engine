@@ -346,20 +346,40 @@ class NarrativeDashboard:
             st.info("Collect data first in the Data Collection tab")
             return
         
-        # Get unique videos with metrics from database
-        for video_id in yt_data["video_id"].unique()[:50]:
-            video_df = yt_data[yt_data["video_id"] == video_id]
-            # Get views from youtube_videos table if available
-            from app.db import DatabaseManager
-            db_temp = DatabaseManager()
-            
-            # Try to get real metrics
+        # Get unique videos with metrics from database (with JOIN to get title)
+        conn = self.db._get_connection()
+        
+        # Normalize channel name (case insensitive)
+        yt_channel_normalized = yt_channel.lower().strip()
+        
+        # Get videos with their titles from youtube_videos table
+        query = """
+            SELECT DISTINCT 
+                yv.video_id,
+                yv.title,
+                yv.views,
+                yv.likes,
+                COUNT(yc.id) as comments_count
+            FROM youtube_videos yv
+            LEFT JOIN youtube_comments yc ON yv.video_id = yc.video_id
+            WHERE LOWER(yv.channel_name) = ?
+            GROUP BY yv.video_id
+            ORDER BY yv.published_at DESC
+            LIMIT 50
+        """
+        
+        import pandas as pd
+        videos_df = pd.read_sql_query(query, conn, params=(yt_channel_normalized,))
+        conn.close()
+        
+        videos = []
+        for _, row in videos_df.iterrows():
             videos.append({
-                "video_id": video_id,
-                "title": video_df.iloc[0]["title"] if "title" in video_df.columns else video_id,
-                "views": video_df.iloc[0].get("views", len(video_df) * 100) if "views" in video_df.columns else len(video_df) * 100,
-                "likes": video_df.iloc[0].get("likes", len(video_df) * 20) if "likes" in video_df.columns else len(video_df) * 20,
-                "comments_count": len(video_df)
+                "video_id": row["video_id"],
+                "title": row["title"] if pd.notna(row["title"]) else "Untitled",
+                "views": row["views"] if pd.notna(row["views"]) else 0,
+                "likes": row["likes"] if pd.notna(row["likes"]) else 0,
+                "comments_count": row["comments_count"] if pd.notna(row["comments_count"]) else 0
             })
         
         if not videos:
