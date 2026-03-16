@@ -1,0 +1,33 @@
+# Narrative Intelligence Engine - Dependencies
+
+# Core
+pandas>=2.0.0
+numpy>=1.24.0
+
+# APIs
+google-api-python-client>=2.0.0
+requests>=2.28.0
+
+# Spotify API
+spotipy>=2.23.0
+
+# NLP & ML
+scikit-learn>=1.3.0
+nltk>=3.8.0
+spacy>=3.6.0
+
+# Statistics
+scipy>=1.11.0
+statsmodels>=0.14.0
+
+# Database (built-in)
+
+# Dashboard
+streamlit>=1.28.0
+plotly>=5.18.0
+
+# Visualization
+pyLDAvis>=3.4.0
+
+# Utils
+python-dotenv>=1.0.0
