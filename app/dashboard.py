@@ -440,27 +440,37 @@ class NarrativeDashboard:
     
     def _render_spotify_artist_insight(self, artist_name):
         """Render Spotify artist insight"""
+        # Get tracks for the artist
         tracks_df = self.db.get_spotify_tracks(artist_name)
-        stats = self.db.get_spotify_tracks(artist_name)
         
         if tracks_df.empty:
-            st.info(f"No Spotify data for {artist_name}")
+            st.warning(f"⚠️ No hay datos adecuados para '{artist_name}' en Spotify")
+            st.info("Spotify no encontró resultados para este artista. Verificá el nombre e intentá de nuevo.")
             return
+        
+        # Check if data matches the artist name
+        spotify_names = tracks_df["artist_name"].unique()
+        name_matches = any(artist_name.lower() in name or name in artist_name.lower() for name in spotify_names)
+        
+        if not name_matches:
+            st.warning(f"⚠️ Spotify devolvió '{spotify_names[0] if len(spotify_names) > 0 else 'unknown'}' en lugar de '{artist_name}'")
+            st.info("Los resultados pueden no ser exactos. Verificá el nombre del artista.")
         
         # Calculate artist stats
         total_tracks = len(tracks_df)
         total_albums = tracks_df["album_name"].nunique() if "album_name" in tracks_df.columns else 0
         
         st.success(f"**🎵 Spotify - {artist_name}**")
-        st.write(f"Artist with {total_tracks} tracks across {total_albums} releases.")
         
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Total Tracks", total_tracks)
+            st.metric("Tracks", total_tracks)
         with col2:
             st.metric("Albums/Singles", total_albums)
         with col3:
-            st.metric("Followers", stats.get("artist_id", "N/A"))
+            # Get followers from stored data (if available)
+            followers = tracks_df.iloc[0]["artist_name"] if len(tracks_df) > 0 else "N/A"
+            st.metric("Followers", "N/A (API limited)")
     
     def _render_youtube_top3(self, yt_channel):
         """Render YouTube top 3 by engagement with insights"""
@@ -502,30 +512,29 @@ class NarrativeDashboard:
     def _render_spotify_top3(self, artist_name):
         """Render Spotify top 3 most popular songs"""
         
-        st.subheader("🎵 Spotify Top 3 - Most Popular")
+        st.subheader("🎵 Spotify Top 3 - Destacados")
         
         tracks_df = self.db.get_spotify_tracks(artist_name)
         
         if tracks_df.empty:
-            st.info("No Spotify tracks found. Collect data first.")
             return
         
-        # Sort by popularity and get top 3
-        if "popularity" in tracks_df.columns:
-            sorted_tracks = tracks_df.sort_values("popularity", ascending=False).head(3)
+        # Sort by listens_score (our proxy for popularity)
+        if "listens_score" in tracks_df.columns:
+            sorted_tracks = tracks_df.sort_values("listens_score", ascending=False).head(3)
         else:
-            # If no popularity, show most recent
             sorted_tracks = tracks_df.head(3)
         
         for i, (_, track) in enumerate(sorted_tracks.iterrows(), 1):
             track_name = track.get("track_name", "Unknown")
             album_name = track.get("album_name", "Unknown Album")
-            popularity = track.get("popularity", 0)
+            listens_score = track.get("listens_score", 0) if pd.notna(track.get("listens_score", 0)) else 0
+            track_position = track.get("track_position", 1) if pd.notna(track.get("track_position", 1)) else 1
             
-            # Create a visual indicator based on popularity
-            if popularity >= 50:
+            # Badge based on track position (first tracks = title track = more important)
+            if track_position == 1:
                 badge = "🔥"
-            elif popularity >= 30:
+            elif track_position <= 3:
                 badge = "⭐"
             else:
                 badge = "📀"
@@ -533,7 +542,7 @@ class NarrativeDashboard:
             st.markdown(f"""
             **{badge} {i}. {track_name}**
             - Album: {album_name}
-            - Popularity Score: {popularity}
+            - Track #{track_position} del álbum
             """)
 
 

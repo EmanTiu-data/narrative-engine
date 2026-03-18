@@ -112,6 +112,8 @@ class DatabaseManager:
                 track_name TEXT NOT NULL,
                 album_name TEXT,
                 release_date TEXT,
+                track_position INTEGER DEFAULT 1,
+                listens_score INTEGER DEFAULT 0,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -300,14 +302,16 @@ class DatabaseManager:
         
         cursor.execute("""
             INSERT OR REPLACE INTO spotify_tracks 
-            (track_id, artist_name, track_name, album_name, release_date)
-            VALUES (?, ?, ?, ?, ?)
+            (track_id, artist_name, track_name, album_name, release_date, track_position, listens_score)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
             track.get('track_id'),
             normalize_name(track.get('artist_name', '')),
             track.get('track_name', ''),
             track.get('album_name', ''),
-            track.get('release_date', '')
+            track.get('release_date', ''),
+            track.get('track_position', 1),
+            track.get('listens_score', 0)
         ))
         
         conn.commit()
