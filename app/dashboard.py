@@ -235,7 +235,7 @@ class NarrativeDashboard:
         
         # Analytics & Insights Tab
         with tab3:
-            self._render_analytics(yt_channel, spotify_artist)
+            self._render_analytics(yt_channel, spotify_artist, twitch_channel)
     
     def _render_data_collection(self, yt_channel, spotify_artist, twitch_channel,
                                max_videos, max_comments, collect_btn):
@@ -375,16 +375,17 @@ class NarrativeDashboard:
                 st.write("**Keywords:** " + ", ".join(topic["keywords"]))
                 st.write("**All words:** " + ", ".join(topic["topic_words"]))
     
-    def _render_analytics(self, yt_channel, spotify_artist):
+    def _render_analytics(self, yt_channel, spotify_artist, twitch_channel):
         """Render analytics and insights tab - unified view"""
         
         st.header("📊 Analytics & Insights")
         
         has_youtube = bool(yt_channel)
         has_spotify = bool(spotify_artist)
+        has_twitch = bool(twitch_channel)
         
-        if not has_youtube and not has_spotify:
-            st.warning("Enter a YouTube channel or Spotify artist in the sidebar")
+        if not has_youtube and not has_spotify and not has_twitch:
+            st.warning("Enter a YouTube channel, Spotify artist, or Twitch streamer in the sidebar")
             return
         
         # Artist/Streamer Insight Button - UNIFIED
@@ -402,6 +403,8 @@ class NarrativeDashboard:
                         self._render_youtube_artist_insight(yt_channel)
                     if has_spotify:
                         self._render_spotify_artist_insight(spotify_artist)
+                    if has_twitch:
+                        self._render_twitch_streamer_insight(twitch_channel)
         
         st.divider()
         
@@ -413,6 +416,11 @@ class NarrativeDashboard:
         # Spotify Section
         if has_spotify:
             self._render_spotify_top3(spotify_artist)
+            st.divider()
+        
+        # Twitch Section
+        if has_twitch:
+            self._render_twitch_top3(twitch_channel, yt_channel)
     
     def _render_youtube_artist_insight(self, yt_channel):
         """Render YouTube artist/streamer insight"""
@@ -556,6 +564,157 @@ class NarrativeDashboard:
             - Album: {album_name}
             - {note} | {comparison}
             """)
+    
+    def _get_twitch_channel_data(self, channel_name: str) -> dict:
+        """Obtiene datos de Twitch para un canal"""
+        try:
+            tw_data = self.twitch.collect_channel_data(channel_name)
+            return tw_data
+        except Exception as e:
+            return {"error": str(e)}
+    
+    def _render_twitch_streamer_insight(self, channel_name: str):
+        """Render Twitch streamer insight"""
+        tw_data = self._get_twitch_channel_data(channel_name)
+        
+        if tw_data.get("error"):
+            st.warning(f"⚠️ Twitch: {tw_data.get('error')}")
+            return
+        
+        # Calculate stats
+        videos = tw_data.get("videos", [])
+        total_views = tw_data.get("total_views", 0)
+        avg_viewers = tw_data.get("avg_viewers_per_video", 0)
+        profile_views = tw_data.get("total_views", 0)  # This is actually profile_views
+        is_live = tw_data.get("is_live", False)
+        
+        st.success(f"**🎮 Twitch - {tw_data.get('display_name', channel_name)}**")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Videos", tw_data.get("video_count", 0))
+        with col2:
+            st.metric("Avg Views/Video", f"{avg_viewers:,.0f}")
+        with col3:
+            live_status = "🔴 EN VIVO" if is_live else "⚫ Offline"
+            st.metric("Status", live_status)
+        with col4:
+            current_viewers = tw_data.get("current_viewers", 0)
+            st.metric("Current Viewers", f"{current_viewers:,}" if is_live else "N/A")
+    
+    def _render_twitch_top3(self, channel_name: str, yt_channel: str = None):
+        """Render Twitch stats with stream recommendation"""
+        
+        st.subheader("🎮 Twitch Stats & Recommendations")
+        
+        tw_data = self._get_twitch_channel_data(channel_name)
+        
+        if tw_data.get("error"):
+            st.warning(f"No Twitch data for {channel_name}")
+            return
+        
+        videos = tw_data.get("videos", [])
+        
+        if not videos:
+            st.info("No videos/streams found")
+            return
+        
+        # Calculate stats
+        total_streams = len(videos)
+        total_views = sum(v.get("view_count", 0) for v in videos)
+        avg_views = total_views / total_streams if total_streams > 0 else 0
+        
+        # Calculate average stream duration
+        import re
+        total_minutes = 0
+        for v in videos:
+            duration = v.get("duration", "0m")
+            match = re.search(r'(\d+)h|(\d+)m|(\d+)s', duration)
+            if match:
+                hours = int(match.group(1)) if match.group(1) else 0
+                mins = int(match.group(2)) if match.group(2) else 0
+                secs = int(match.group(3)) if match.group(3) else 0
+                total_minutes += hours * 60 + mins + secs / 60
+        
+        avg_duration_mins = total_minutes / total_streams if total_streams > 0 else 0
+        
+        # Show metrics
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Streams Analizados", total_streams)
+        with col2:
+            st.metric("Avg Views/Stream", f"{avg_views:,.0f}")
+        with col3:
+            st.metric("Avg Duración", f"{avg_duration_mins:.0f} min")
+        
+        # Generate recommendation based on YouTube data
+        recommendation = self._generate_stream_recommendation(tw_data, yt_channel)
+        
+        st.markdown("---")
+        st.markdown(f"### 💡 Recomendación de Streaming")
+        st.info(recommendation)
+    
+    def _generate_stream_recommendation(self, twitch_data: dict, yt_channel: str = None) -> str:
+        """Genera recomendación sobre horas de streaming basada en datos de YouTube"""
+        
+        videos = twitch_data.get("videos", [])
+        if not videos:
+            return "No hay suficientes datos para generar una recomendación."
+        
+        # Analyze stream performance
+        views_list = [v.get("view_count", 0) for v in videos]
+        avg_views = sum(views_list) / len(views_list) if views_list else 0
+        
+        # Get best performing streams
+        best_streams = [v for v in videos if v.get("view_count", 0) > avg_views * 1.5]
+        worst_streams = [v for v in videos if v.get("view_count", 0) < avg_views * 0.5]
+        
+        # Calculate average duration
+        import re
+        durations = []
+        for v in videos:
+            duration = v.get("duration", "0m")
+            match = re.search(r'(\d+)h|(\d+)m', duration)
+            if match:
+                hours = int(match.group(1)) if match.group(1) else 0
+                mins = int(match.group(2)) if match.group(2) else 0
+                durations.append(hours * 60 + mins)
+        
+        avg_duration = sum(durations) / len(durations) if durations else 0
+        
+        # Build recommendation
+        parts = []
+        
+        # Duration recommendation
+        if avg_duration < 120:  # Less than 2 hours
+            parts.append(f"⏱️ Tus streams son cortos ({avg_duration:.0f} min avg). Considerá hacer streams más largos (3-4 horas) para builds de audiencia.")
+        elif avg_duration > 240:  # More than 4 hours
+            parts.append(f"⏱️ Streams largos ({avg_duration:.0f} min avg). Considerá acortar a 2-3 horas para mantener engagement.")
+        else:
+            parts.append(f"⏱️ Duración promedio buena ({avg_duration:.0f} min). Mantené este ritmo.")
+        
+        # Frequency recommendation based on performance
+        if len(best_streams) > len(videos) * 0.3:
+            parts.append(f"📈 Tenés {len(best_streams)} streams con buen rendimiento. Aumentá frecuencia si podés.")
+        elif len(worst_streams) > len(videos) * 0.4:
+            parts.append(f"📉 Muchos streams con bajo rendimiento. Mejorá el contenido o cambiá horarios.")
+        
+        # Cross-platform recommendation if YouTube data exists
+        if yt_channel:
+            yt_videos = self._get_videos_for_channel(yt_channel)
+            if yt_videos:
+                yt_avg_views = sum(v.get("views", 0) for v in yt_videos) / len(yt_videos)
+                twitch_avg_views = avg_views
+                
+                # Compare performance
+                if twitch_avg_views > yt_avg_views * 2:
+                    parts.append(f"🎯 Twitch tiene mejor engagement que YouTube ({twitch_avg_views:,.0f} vs {yt_avg_views:,.0f}). Enfocate más en streaming.")
+                elif twitch_avg_views < yt_avg_views * 0.5:
+                    parts.append(f"🎯 YouTube tiene mejor alcance ({yt_avg_views:,.0f} vs {twitch_avg_views:,.0f}). Considerá priorizar contenido de video.")
+                else:
+                    parts.append(f"🎯 Ambos plataformas tienen engagement similar. Mantené presencia en ambas.")
+        
+        return " ".join(parts) if parts else "Continuá con tu estrategia actual. Los datos se ven bien."
 
 
 def main():
