@@ -5,14 +5,37 @@ Handles all data persistence: YouTube, Spotify, Twitch
 
 import sqlite3
 from datetime import datetime
+from pathlib import Path
 from typing import Optional, List, Dict, Any
 import pandas as pd
 
 
 class DatabaseManager:
-    """SQLite manager for historical data storage"""
+    """
+    SQLite manager for historical data storage.
     
-    def __init__(self, db_path: str = "data/narrative.db"):
+    Automatically resolves database path relative to project root,
+    ensuring consistent behavior across different execution contexts.
+    """
+    
+    def __init__(self, db_path: Optional[str] = None):
+        """
+        Initialize database connection.
+        
+        Args:
+            db_path: Optional custom path. If not provided, uses default
+                     data/narrative.db relative to project root.
+        """
+        if db_path is None:
+            # Resolve relative to project root
+            project_root = Path(__file__).parent.parent
+            db_path = str(project_root / "data" / "narrative.db")
+        else:
+            db_path = str(Path(db_path))
+        
+        # Ensure parent directory exists
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        
         self.db_path = db_path
         self._init_schema()
     

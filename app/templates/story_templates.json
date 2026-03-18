@@ -1,0 +1,60 @@
+{
+  "topic_labels": {
+    "skill": {
+      "keywords": ["skill", "habilidad", "technique", "tecnica", "practice", "practica"],
+      "description": "Discusión sobre nivel técnico o habilidad del creador"
+    },
+    "entertainment": {
+      "keywords": ["funny", "gracioso", "entertaining", "entretenido", "boring", "aburrido"],
+      "description": "Valor de entretenimiento del contenido"
+    },
+    "frequency": {
+      "keywords": ["schedule", "horario", "consistent", "consistente", "posting", "upload"],
+      "description": "Patrones de frecuencia de publicación"
+    },
+    "engagement": {
+      "keywords": ["support", "apoyo", "follow", "seguir", "like", "compartir"],
+      "description": "Interacción y soporte de la audiencia"
+    },
+    "production": {
+      "keywords": ["quality", "calidad", "audio", "video", "editing", "edicion"],
+      "description": "Calidad de producción del contenido"
+    },
+    "personality": {
+      "keywords": ["personality", "personalidad", "charisma", "carisma", "energy", "energia"],
+      "description": "Rasgos personales del creador"
+    }
+  },
+  "correlation_templates": {
+    "positive_strong": {
+      "template": "📈 {platform_a} y {platform_b} muestran correlación positiva fuerte (r={value}). Cuando {metric_a} sube, {metric_b} también tiende a subir.",
+      "min_r": 0.7
+    },
+    "positive_moderate": {
+      "template": "📊 {platform_a} y {platform_b} correlacionan moderadamente (r={value}). Existe una relación positiva observable.",
+      "min_r": 0.4
+    },
+    "negative_strong": {
+      "template": "📉 {platform_a} y {platform_b} muestran correlación negativa fuerte (r={value}). Cuando {metric_a} sube, {metric_b} tiende a bajar.",
+      "min_r": -0.7
+    },
+    "lag_detected": {
+      "template": "⏰ Se detectó un lag de {days} días: actividad en {platform_a} precede a {platform_b} por {days} días.",
+      "min_r": 0.5
+    }
+  },
+  "anomaly_templates": {
+    "spike": {
+      "template": "⚠️ Spike detectado en {platform}: {metric} fue {sigma}σ sobre el promedio ({value} vs {mean})",
+      "type": "spike"
+    },
+    "drop": {
+      "template": "📉 Caída inusual en {platform}: {metric} cayó {percent}% por debajo del promedio",
+      "type": "drop"
+    },
+    "isolated": {
+      "template": "🔍 Punto outlier identificado por Isolation Forest en {platform} el {date}",
+      "type": "isolated"
+    }
+  }
+}
