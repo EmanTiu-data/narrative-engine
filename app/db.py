@@ -4,6 +4,7 @@ Handles all data persistence: YouTube, Spotify, Twitch
 """
 
 import sqlite3
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -163,6 +164,25 @@ class DatabaseManager:
                 z_score REAL,
                 is_outlier BOOLEAN DEFAULT 1,
                 detected_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Video insights cache table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS video_insights (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                video_id TEXT NOT NULL,
+                platform TEXT NOT NULL DEFAULT 'youtube',
+                channel_name TEXT,
+                generated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                engagement_score REAL,
+                rating TEXT,
+                insight_text TEXT,
+                drivers TEXT,
+                anomalies TEXT,
+                tips TEXT,
+                raw_data TEXT,
+                UNIQUE(video_id, platform)
             )
         """)
         
@@ -459,6 +479,132 @@ class DatabaseManager:
         conn.close()
         
         return dict(row) if row else {}
+    
+    # ==================== Video Insights ====================
+    
+    def save_video_insight(self, video_id: str, platform: str,
+                          insight_data: Dict, channel_name: str = None) -> None:
+        """
+        Guarda un insight generado en la base de datos.
+        
+        Args:
+            video_id: ID único del video
+            platform: Plataforma (youtube, twitch, spotify)
+            insight_data: Diccionario con datos del insight
+            channel_name: Nombre del canal (opcional)
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT OR REPLACE INTO video_insights 
+            (video_id, platform, channel_name, generated_at, engagement_score, 
+             rating, insight_text, drivers, anomalies, tips, raw_data)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            video_id,
+            platform,
+            channel_name,
+            datetime.now().isoformat(),
+            insight_data.get("engagement_score"),
+            insight_data.get("rating"),
+            insight_data.get("insight_text"),
+            json.dumps(insight_data.get("drivers", [])),
+            json.dumps(insight_data.get("anomalies", [])),
+            insight_data.get("tip", ""),
+            json.dumps(insight_data)
+        ))
+        
+        conn.commit()
+        conn.close()
+    
+    def get_video_insight(self, video_id: str, platform: str = 'youtube') -> Optional[Dict]:
+        """
+        Obtiene un insight guardado para un video.
+        
+        Args:
+            video_id: ID único del video
+            platform: Plataforma (default: youtube)
+            
+        Returns:
+            Diccionario con datos del insight o None si no existe
+        """
+        conn = self._get_connection()
+        
+        df = pd.read_sql_query("""
+            SELECT * FROM video_insights 
+            WHERE video_id = ? AND platform = ?
+        """, conn, params=(video_id, platform))
+        
+        conn.close()
+        
+        if df.empty:
+            return None
+        
+        row = df.iloc[0]
+        return {
+            "video_id": row["video_id"],
+            "platform": row["platform"],
+            "channel_name": row["channel_name"],
+            "generated_at": row["generated_at"],
+            "engagement_score": row["engagement_score"],
+            "rating": row["rating"],
+            "insight_text": row["insight_text"],
+            "drivers": json.loads(row["drivers"]) if row["drivers"] else [],
+            "anomalies": json.loads(row["anomalies"]) if row["anomalies"] else [],
+            "tip": row["tips"] if row["tips"] else "",
+            "raw_data": json.loads(row["raw_data"]) if row["raw_data"] else {}
+        }
+    
+    def get_all_video_insights(self, channel_name: str = None, 
+                               platform: str = 'youtube',
+                               limit: int = 50) -> List[Dict]:
+        """
+        Obtiene todos los insights de videos de un canal.
+        
+        Args:
+            channel_name: Filtrar por nombre de canal (opcional)
+            platform: Plataforma (default: youtube)
+            limit: Límite de resultados (default: 50)
+            
+        Returns:
+            Lista de insights ordenados por fecha
+        """
+        conn = self._get_connection()
+        
+        if channel_name:
+            df = pd.read_sql_query("""
+                SELECT * FROM video_insights 
+                WHERE platform = ? AND channel_name = ?
+                ORDER BY generated_at DESC
+                LIMIT ?
+            """, conn, params=(platform, channel_name, limit))
+        else:
+            df = pd.read_sql_query("""
+                SELECT * FROM video_insights 
+                WHERE platform = ?
+                ORDER BY generated_at DESC
+                LIMIT ?
+            """, conn, params=(platform, limit))
+        
+        conn.close()
+        
+        results = []
+        for _, row in df.iterrows():
+            results.append({
+                "video_id": row["video_id"],
+                "platform": row["platform"],
+                "channel_name": row["channel_name"],
+                "generated_at": row["generated_at"],
+                "engagement_score": row["engagement_score"],
+                "rating": row["rating"],
+                "insight_text": row["insight_text"],
+                "drivers": json.loads(row["drivers"]) if row["drivers"] else [],
+                "anomalies": json.loads(row["anomalies"]) if row["anomalies"] else [],
+                "tip": row["tips"] if row["tips"] else "",
+            })
+        
+        return results
 
 
 # Singleton instance
