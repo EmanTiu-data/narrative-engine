@@ -266,23 +266,17 @@ class SpotifyClient:
         for album in stats.get("recent_albums", []):
             album_tracks = self.get_album_tracks(album["album_id"])
             for album_track in album_tracks:
-                # Track position in album as popularity proxy (first tracks are more important)
-                track_position = album_track.get("track_number", 1)
-                # Calculate score: higher for earlier tracks, Spotify popularity if available
-                track_popularity = (11 - min(track_position, 10)) * 10  # 100 for track 1, 10 for track 10+
-                
                 tracks.append({
                     "track_id": album_track["track_id"],
                     "artist_name": stats["artist_name"],
                     "track_name": album_track["track_name"],
                     "album_name": album["album_name"],
                     "release_date": album["release_date"],
-                    "track_position": track_position,
-                    "listens_score": track_popularity  # Proxy for popularity based on track position
+                    "track_position": album_track.get("track_number", 1)
                 })
         
-        # Sort by track position (earlier = more important = higher score)
-        tracks.sort(key=lambda x: x.get("listens_score", 0), reverse=True)
+        # Sort by track position (earlier tracks in album are more important)
+        tracks.sort(key=lambda x: x.get("track_position", 1))
         
         return {
             "artist_name": artist_name,

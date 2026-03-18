@@ -459,6 +459,7 @@ class NarrativeDashboard:
         # Calculate artist stats
         total_tracks = len(tracks_df)
         total_albums = tracks_df["album_name"].nunique() if "album_name" in tracks_df.columns else 0
+        avg_track_position = tracks_df["track_position"].mean() if "track_position" in tracks_df.columns and len(tracks_df) > 0 else 1
         
         st.success(f"**🎵 Spotify - {artist_name}**")
         
@@ -468,9 +469,7 @@ class NarrativeDashboard:
         with col2:
             st.metric("Albums/Singles", total_albums)
         with col3:
-            # Get followers from stored data (if available)
-            followers = tracks_df.iloc[0]["artist_name"] if len(tracks_df) > 0 else "N/A"
-            st.metric("Followers", "N/A (API limited)")
+            st.metric("Avg Track Pos", f"{avg_track_position:.1f}")
     
     def _render_youtube_top3(self, yt_channel):
         """Render YouTube top 3 by engagement with insights"""
@@ -510,39 +509,52 @@ class NarrativeDashboard:
             st.divider()
     
     def _render_spotify_top3(self, artist_name):
-        """Render Spotify top 3 most popular songs"""
+        """Render Spotify top 3 tracks by album position"""
         
-        st.subheader("🎵 Spotify Top 3 - Destacados")
+        st.subheader("🎵 Spotify Top 3 - Tracks Principales")
         
         tracks_df = self.db.get_spotify_tracks(artist_name)
         
         if tracks_df.empty:
             return
         
-        # Sort by listens_score (our proxy for popularity)
-        if "listens_score" in tracks_df.columns:
-            sorted_tracks = tracks_df.sort_values("listens_score", ascending=False).head(3)
+        # Sort by track position (lower position = more important = first track of album)
+        if "track_position" in tracks_df.columns:
+            sorted_tracks = tracks_df.sort_values("track_position").head(3)
         else:
             sorted_tracks = tracks_df.head(3)
+        
+        # Calculate average track position for comparison
+        avg_position = tracks_df["track_position"].mean() if "track_position" in tracks_df.columns and len(tracks_df) > 0 else 1
         
         for i, (_, track) in enumerate(sorted_tracks.iterrows(), 1):
             track_name = track.get("track_name", "Unknown")
             album_name = track.get("album_name", "Unknown Album")
-            listens_score = track.get("listens_score", 0) if pd.notna(track.get("listens_score", 0)) else 0
             track_position = track.get("track_position", 1) if pd.notna(track.get("track_position", 1)) else 1
             
-            # Badge based on track position (first tracks = title track = more important)
+            # Badge based on track position
             if track_position == 1:
                 badge = "🔥"
+                note = "Single principal del álbum"
             elif track_position <= 3:
                 badge = "⭐"
+                note = "Track destacado"
             else:
                 badge = "📀"
+                note = f"Track #{track_position} del álbum"
+            
+            # Compare to average
+            if track_position < avg_position:
+                comparison = "🔼 Sobre el promedio del artista"
+            elif track_position > avg_position:
+                comparison = "🔽 Bajo el promedio del artista"
+            else:
+                comparison = "➖ En el promedio"
             
             st.markdown(f"""
             **{badge} {i}. {track_name}**
             - Album: {album_name}
-            - Track #{track_position} del álbum
+            - {note} | {comparison}
             """)
 
 

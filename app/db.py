@@ -113,10 +113,15 @@ class DatabaseManager:
                 album_name TEXT,
                 release_date TEXT,
                 track_position INTEGER DEFAULT 1,
-                listens_score INTEGER DEFAULT 0,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        
+        # Add missing columns if table exists
+        try:
+            cursor.execute("ALTER TABLE spotify_tracks ADD COLUMN track_position INTEGER DEFAULT 1")
+        except:
+            pass
         
         # Spotify streams table (daily)
         cursor.execute("""
@@ -302,16 +307,15 @@ class DatabaseManager:
         
         cursor.execute("""
             INSERT OR REPLACE INTO spotify_tracks 
-            (track_id, artist_name, track_name, album_name, release_date, track_position, listens_score)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (track_id, artist_name, track_name, album_name, release_date, track_position)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, (
             track.get('track_id'),
             normalize_name(track.get('artist_name', '')),
             track.get('track_name', ''),
             track.get('album_name', ''),
             track.get('release_date', ''),
-            track.get('track_position', 1),
-            track.get('listens_score', 0)
+            track.get('track_position', 1)
         ))
         
         conn.commit()
