@@ -1,12 +1,11 @@
 """
 Narrative Intelligence Engine - Dashboard
-Streamlit dashboard for NLP, Correlation & Anomaly Detection
+Streamlit dashboard for Content Creator Analytics with AI Insights
 """
 
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 from datetime import datetime
 
 import sys
@@ -19,12 +18,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-from app.db import DatabaseManager
+from app.db import DatabaseManager, normalize_name
 from app.youtube_client import YouTubeClient
 from app.spotify_client import SpotifyClient
 from app.twitch_client import TwitchClient
 from app.lda_analyzer import LDAAnalyzer
-from app.correlation import CorrelationEngine, GracefulDegradation
 from app.anomaly_detector import VideoAnomalyDetector
 from app.insights_engine import InsightsEngine, get_rating_badge
 
@@ -46,9 +44,7 @@ class NarrativeDashboard:
         self.spotify = SpotifyClient()
         self.twitch = TwitchClient()
         self.lda = LDAAnalyzer(n_topics=5, n_top_words=10)
-        self.correlation = CorrelationEngine(min_correlation=0.2)  # Lower threshold
-        self.graceful = GracefulDegradation()
-        self.anomaly = VideoAnomalyDetector(z_threshold=2.0)  # Lower threshold from 3 to 2
+        self.anomaly = VideoAnomalyDetector(z_threshold=2.0)
         self.insights = InsightsEngine()
     
     def _calculate_channel_averages(self, videos: list) -> dict:
@@ -90,7 +86,6 @@ class NarrativeDashboard:
         existing_insight = self.db.get_video_insight(video_id, "youtube")
         
         # Create unique key for Streamlit widgets
-        insight_key = f"insight_{key_prefix}_{video_id}"
         generate_key = f"generate_{key_prefix}_{video_id}"
         regenerate_key = f"regenerate_{key_prefix}_{video_id}"
         
@@ -101,7 +96,7 @@ class NarrativeDashboard:
             with col1:
                 rating = existing_insight.get("rating", "")
                 badge = get_rating_badge(rating)
-                st.markdown(f"**💡 INSIGHT** {badge}{rating} - Guardado: {existing_insight.get('generated_at', '')[:16]}")
+                st.markdown(f"**💡 INSIGHT** {badge}{rating}")
                 st.write(existing_insight.get("insight_text", ""))
                 
                 # Show drivers
@@ -121,8 +116,6 @@ class NarrativeDashboard:
             
             with col2:
                 if st.button("🔄", key=regenerate_key, help="Regenerar insight"):
-                    # Delete old insight
-                    # Generate new one
                     channel_avg_for_video = self._calculate_channel_averages(
                         self._get_videos_for_channel(video.get("channel_name", ""))
                     )
@@ -132,32 +125,28 @@ class NarrativeDashboard:
                         channel_avg=channel_avg_for_video
                     )
                     
-                    # Save to DB
                     self.db.save_video_insight(
                         video_id=video_id,
                         platform="youtube",
                         insight_data=insight_data,
-                        channel_name=video.get("channel_name", "")
+                        channel_name=normalize_name(video.get("channel_name", ""))
                     )
                     
                     st.rerun()
         else:
             if st.button("💡 Generar Insight", key=generate_key):
-                # Generate insight
                 insight_data = self.insights.generate_video_insight(
                     video_data=video,
                     channel_avg=channel_avg
                 )
                 
-                # Save to DB
                 self.db.save_video_insight(
                     video_id=video_id,
                     platform="youtube",
                     insight_data=insight_data,
-                    channel_name=video.get("channel_name", "")
+                    channel_name=normalize_name(video.get("channel_name", ""))
                 )
                 
-                # Display
                 st.success(f"**Video {get_rating_badge(insight_data['rating'])}{insight_data['rating']}** - {insight_data['insight_text']}")
                 
                 if insight_data.get("drivers"):
@@ -182,11 +171,11 @@ class NarrativeDashboard:
                 COUNT(yc.id) as comments_count
             FROM youtube_videos yv
             LEFT JOIN youtube_comments yc ON yv.video_id = yc.video_id
-            WHERE LOWER(yv.channel_name) = LOWER(?)
+            WHERE yv.channel_name = ?
             GROUP BY yv.video_id
         """
         
-        videos_df = pd.read_sql_query(query, conn, params=(channel_name,))
+        videos_df = pd.read_sql_query(query, conn, params=[normalize_name(channel_name)])
         conn.close()
         
         videos = []
@@ -205,7 +194,7 @@ class NarrativeDashboard:
         """Run dashboard"""
         
         st.title("🧠 The Narrative Intelligence Engine")
-        st.markdown("### Advanced NLP, Cross-Platform Correlation & Anomaly Detection")
+        st.markdown("### AI-Powered Content Creator Analytics")
         
         # Sidebar
         with st.sidebar:
@@ -228,12 +217,11 @@ class NarrativeDashboard:
             st.markdown("---")
             collect_btn = st.button("📥 Collect Data", type="primary")
         
-        # Main content
-        tab1, tab2, tab3, tab4 = st.tabs([
-            "📊 Data Collection", 
-            "🔍 Topic Analysis (LDA)", 
-            "🔗 Correlations",
-            "⚠️ Anomaly Detection"
+        # Main content - 3 tabs only
+        tab1, tab2, tab3 = st.tabs([
+            "📥 Data Collection", 
+            "🔍 Topic Analysis", 
+            "📊 Analytics & Insights"
         ])
         
         # Data Collection Tab
@@ -245,13 +233,9 @@ class NarrativeDashboard:
         with tab2:
             self._render_topic_analysis(yt_channel, n_topics)
         
-        # Correlations Tab
+        # Analytics & Insights Tab
         with tab3:
-            self._render_correlations(yt_channel, spotify_artist, twitch_channel)
-        
-        # Anomaly Detection Tab
-        with tab4:
-            self._render_anomalies(yt_channel)
+            self._render_analytics(yt_channel, spotify_artist, twitch_channel)
     
     def _render_data_collection(self, yt_channel, spotify_artist, twitch_channel,
                                max_videos, max_comments, collect_btn):
@@ -271,16 +255,14 @@ class NarrativeDashboard:
                     yt_data = self.yt.collect_channel_data(yt_channel, max_videos)
                     
                     if "error" not in yt_data:
-                        # Save videos
                         for video in yt_data.get("videos", []):
                             self.db.insert_youtube_video(video)
                         
-                        # Get comments for each video
-                        for video in yt_data.get("videos", [])[:max_videos]:  # Use max_videos
+                        for video in yt_data.get("videos", [])[:max_videos]:
                             comments = self.yt.get_video_comments(video["video_id"], max_comments)
                             self.db.insert_youtube_comments(video["video_id"], comments)
                         
-                        st.success(f"✅ YouTube: {len(yt_data.get('videos', []))} videos, comments collected")
+                        st.success(f"✅ YouTube: {len(yt_data.get('videos', []))} videos collected")
                     else:
                         st.error(f"❌ YouTube: {yt_data.get('error')}")
                 
@@ -307,19 +289,18 @@ class NarrativeDashboard:
                     tw_data = self.twitch.collect_channel_data(twitch_channel)
                     
                     if "error" not in tw_data:
-                        # Save current stats
                         self.db.insert_twitch_stats(twitch_channel, {
                             "date": datetime.now().strftime("%Y-%m-%d"),
                             "followers": tw_data.get("total_followers", 0),
                             "followers_gained": 0,
                             "avg_viewers": tw_data.get("avg_viewers_per_video", 0),
-                            "stream_hours": len(tw_data.get("videos", [])) * 2,  # Estimate
+                            "stream_hours": len(tw_data.get("videos", [])) * 2,
                             "total_views": tw_data.get("total_views", 0)
                         })
                         
                         followers = tw_data.get("total_followers", 0)
-                        followers_display = "N/A (API restringida)" if followers == 0 else followers
-                        st.success(f"✅ Twitch: {followers_display}, Videos: {tw_data.get('video_count', 0)}, Views: {tw_data.get('total_views', 0):,}")
+                        followers_display = "N/A (API restricted)" if followers == 0 else followers
+                        st.success(f"✅ Twitch: {followers_display}")
                     else:
                         st.warning(f"⚠️ Twitch: {tw_data.get('error')}")
                 
@@ -335,8 +316,8 @@ class NarrativeDashboard:
             st.metric("YouTube Comments", len(yt_comments))
         
         with col2:
-            sp_streams = self.db.get_spotify_streams()
-            st.metric("Spotify Tracks", len(sp_streams))
+            sp_tracks = self.db.get_spotify_tracks()
+            st.metric("Spotify Tracks", len(sp_tracks))
         
         with col3:
             if twitch_channel:
@@ -354,7 +335,6 @@ class NarrativeDashboard:
             st.warning("Please enter a YouTube channel in the sidebar")
             return
         
-        # Get comments
         comments_df = self.db.get_youtube_comments(yt_channel)
         
         if len(comments_df) < 50:
@@ -362,10 +342,7 @@ class NarrativeDashboard:
             st.info("Go to Data Collection tab and collect more data")
             return
         
-        # Update LDA topics
         self.lda = LDAAnalyzer(n_topics=n_topics)
-        
-        # Analyze
         comments_text = comments_df["text"].tolist()[:10000]
         result = self.lda.analyze_channel([{"text": c} for c in comments_text])
         
@@ -373,7 +350,6 @@ class NarrativeDashboard:
             st.error(result["error"])
             return
         
-        # Display summary
         st.success(f"📊 Analyzed {result['n_comments_analyzed']} comments")
         
         # Topic distribution
@@ -398,268 +374,347 @@ class NarrativeDashboard:
             with st.expander(f"📌 {topic['topic_name']} ({topic['topic_percentage']:.1f}%)"):
                 st.write("**Keywords:** " + ", ".join(topic["keywords"]))
                 st.write("**All words:** " + ", ".join(topic["topic_words"]))
-        
-        # Summary
-        st.subheader("📋 Summary")
-        st.text(result["summary"])
     
-    def _render_correlations(self, yt_channel, spotify_artist, twitch_channel):
-        """Render correlations tab"""
+    def _render_analytics(self, yt_channel, spotify_artist, twitch_channel):
+        """Render analytics and insights tab - unified view"""
         
-        st.header("🔗 Cross-Platform Correlations")
+        st.header("📊 Analytics & Insights")
         
-        # Prepare platform data
-        platform_data = {}
+        has_youtube = bool(yt_channel)
+        has_spotify = bool(spotify_artist)
+        has_twitch = bool(twitch_channel)
         
-        # YouTube
-        if yt_channel:
-            yt_data = self.db.get_youtube_comments(yt_channel)
-            if len(yt_data) > 0:
-                yt_df = yt_data.copy()
-                yt_df["date"] = pd.to_datetime(yt_df["published_at"]).dt.date
-                yt_agg = yt_df.groupby("date").agg({
-                    "text": "count"
-                }).reset_index()
-                yt_agg.columns = ["date", "comments"]
-                platform_data["youtube"] = yt_agg
-        
-        # Spotify
-        if spotify_artist:
-            sp_data = self.db.get_spotify_streams(spotify_artist)
-            if len(sp_data) > 0:
-                sp_df = sp_data.copy()
-                sp_df["date"] = pd.to_datetime(sp_df["stream_date"]).dt.date
-                sp_agg = sp_df.groupby("date").agg({
-                    "streams": "sum"
-                }).reset_index()
-                platform_data["spotify"] = sp_agg
-        
-        # Twitch
-        if twitch_channel:
-            tw_data = self.db.get_twitch_stats(twitch_channel)
-            if len(tw_data) > 0:
-                tw_df = tw_data.copy()
-                tw_df["date"] = pd.to_datetime(tw_df["stat_date"]).dt.date
-                tw_agg = tw_df[["date", "avg_viewers", "followers"]].copy()
-                platform_data["twitch"] = tw_agg
-        
-        if len(platform_data) < 2:
-            st.warning("Need data from at least 2 platforms")
-            st.info("Collect data first in the Data Collection tab")
+        if not has_youtube and not has_spotify and not has_twitch:
+            st.warning("Enter a YouTube channel, Spotify artist, or Twitch streamer in the sidebar")
             return
         
-        # Calculate correlations
-        result = self.graceful.calculate_available_correlations(platform_data)
-        
-        # Show message
-        st.info(result.get("message", ""))
-        
-        # Display significant correlations
-        st.subheader("📊 Significant Correlations")
-        
-        if result.get("significant_correlations"):
-            for key, corr in result["significant_correlations"].items():
-                r = corr.get("pearson", {}).get("r", 0)
-                p = corr.get("pearson", {}).get("p_value", 1)
-                lag = corr.get("lag_analysis", {}).get("optimal_lag", 0)
-                interp = corr.get("lag_analysis", {}).get("interpretation", "")
-                
-                st.metric(
-                    key.replace("_vs_", " vs "),
-                    f"r = {r:.3f}",
-                    f"p = {p:.4f}, lag = {lag} days"
-                )
-                st.caption(interp)
-                st.divider()
-        else:
-            st.info("No significant correlations found yet")
-        
-        # Show all correlations
-        with st.expander("View All Correlations"):
-            st.json(result.get("all_correlations", {}))
-    
-    def _render_anomalies(self, yt_channel):
-        """Render anomaly detection tab"""
-        
-        st.header("⚠️ Anomaly & Engagement Detection")
-        
-        if not yt_channel:
-            st.warning("Please enter a YouTube channel in the sidebar")
-            return
-        
-        # Get videos from database with real metrics
-        videos = []
-        
-        # Try to get real video data from database
-        yt_data = self.db.get_youtube_comments(yt_channel)
-        
-        if len(yt_data) == 0:
-            st.warning("No data available")
-            st.info("Collect data first in the Data Collection tab")
-            return
-        
-        # Get unique videos with metrics from database (with JOIN to get title)
-        conn = self.db._get_connection()
-        
-        # Normalize channel name (case insensitive)
-        yt_channel_normalized = yt_channel.lower().strip()
-        
-        # Get videos with their titles from youtube_videos table
-        query = """
-            SELECT DISTINCT 
-                yv.video_id,
-                yv.title,
-                yv.views,
-                yv.likes,
-                COUNT(yc.id) as comments_count
-            FROM youtube_videos yv
-            LEFT JOIN youtube_comments yc ON yv.video_id = yc.video_id
-            WHERE LOWER(yv.channel_name) = ?
-            GROUP BY yv.video_id
-            ORDER BY yv.published_at DESC
-            LIMIT 50
-        """
-        
-        import pandas as pd
-        videos_df = pd.read_sql_query(query, conn, params=(yt_channel_normalized,))
-        conn.close()
-        
-        videos = []
-        for _, row in videos_df.iterrows():
-            videos.append({
-                "video_id": row["video_id"],
-                "title": row["title"] if pd.notna(row["title"]) else "Untitled",
-                "views": row["views"] if pd.notna(row["views"]) else 0,
-                "likes": row["likes"] if pd.notna(row["likes"]) else 0,
-                "comments_count": row["comments_count"] if pd.notna(row["comments_count"]) else 0
-            })
-        
-        if not videos:
-            st.warning("No videos found")
-            return
-        
-        # Channel Insight Button
-        st.subheader("📊 Channel Overview")
+        # Artist/Streamer Insight Button - UNIFIED
+        st.subheader("🎯 Artist/Streamer Insight")
         
         col1, col2 = st.columns([1, 4])
         
         with col1:
-            generate_channel_insight = st.button("🎯 Generate Channel Insight", type="primary")
+            generate_artist_insight = st.button("🎯 Generate Insight", type="primary")
         
         with col2:
-            if generate_channel_insight:
-                with st.spinner("Generating channel insight..."):
-                    # Generate channel insight
-                    channel_insight = self.insights.generate_channel_insight(
-                        videos=videos,
-                        channel_name=yt_channel
-                    )
-                    
-                    # Display channel insight
-                    st.success(f"**{channel_insight['rating_badge']} CHANNEL INSIGHT**")
-                    st.write(channel_insight.get("insight_text", ""))
-                    
-                    if channel_insight.get("topic_insight"):
-                        st.write(channel_insight.get("topic_insight", ""))
-                    
-                    # Show key metrics
-                    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-                    with col_m1:
-                        st.metric("Total Videos", channel_insight.get("total_videos", 0))
-                    with col_m2:
-                        st.metric("Avg Engagement", f"{channel_insight.get('avg_engagement', 0):.2f}%")
-                    with col_m3:
-                        st.metric("High Perf", channel_insight.get("high_engagement_videos", 0))
-                    with col_m4:
-                        st.metric("Needs Work", channel_insight.get("low_engagement_videos", 0))
+            if generate_artist_insight:
+                with st.spinner("Generating insight..."):
+                    if has_youtube:
+                        self._render_youtube_artist_insight(yt_channel)
+                    if has_spotify:
+                        self._render_spotify_artist_insight(spotify_artist)
+                    if has_twitch:
+                        self._render_twitch_streamer_insight(twitch_channel)
         
         st.divider()
         
-        # Detect anomalies
-        result = self.anomaly.analyze_video_metrics(videos)
+        # YouTube Section
+        if has_youtube:
+            self._render_youtube_top3(yt_channel)
+            st.divider()
         
-        # Show alert
-        st.subheader("🚨 Alerts")
-        alert_msg = self.anomaly.generate_alert(result)
-        if result.get("total_outliers", 0) > 0:
-            st.warning(alert_msg)
+        # Spotify Section
+        if has_spotify:
+            self._render_spotify_top3(spotify_artist)
+            st.divider()
+        
+        # Twitch Section
+        if has_twitch:
+            self._render_twitch_top3(twitch_channel, yt_channel)
+    
+    def _render_youtube_artist_insight(self, yt_channel):
+        """Render YouTube artist/streamer insight"""
+        videos = self._get_videos_for_channel(yt_channel)
+        
+        if not videos:
+            st.info(f"No YouTube data for {yt_channel}")
+            return
+        
+        channel_insight = self.insights.generate_channel_insight(
+            videos=videos,
+            channel_name=yt_channel
+        )
+        
+        st.success(f"**📺 YouTube - {yt_channel}**")
+        st.write(channel_insight.get("insight_text", ""))
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Videos", channel_insight.get("total_videos", 0))
+        with col2:
+            st.metric("Avg Engagement", f"{channel_insight.get('avg_engagement', 0):.2f}%")
+        with col3:
+            st.metric("Top Performers", channel_insight.get("high_engagement_videos", 0))
+    
+    def _render_spotify_artist_insight(self, artist_name):
+        """Render Spotify artist insight"""
+        # Get tracks for the artist
+        tracks_df = self.db.get_spotify_tracks(artist_name)
+        
+        if tracks_df.empty:
+            st.warning(f"⚠️ No hay datos adecuados para '{artist_name}' en Spotify")
+            st.info("Spotify no encontró resultados para este artista. Verificá el nombre e intentá de nuevo.")
+            return
+        
+        # Check if data matches the artist name
+        spotify_names = tracks_df["artist_name"].unique()
+        name_matches = any(artist_name.lower() in name or name in artist_name.lower() for name in spotify_names)
+        
+        if not name_matches:
+            st.warning(f"⚠️ Spotify devolvió '{spotify_names[0] if len(spotify_names) > 0 else 'unknown'}' en lugar de '{artist_name}'")
+            st.info("Los resultados pueden no ser exactos. Verificá el nombre del artista.")
+        
+        # Calculate artist stats
+        total_tracks = len(tracks_df)
+        total_albums = tracks_df["album_name"].nunique() if "album_name" in tracks_df.columns else 0
+        avg_track_position = tracks_df["track_position"].mean() if "track_position" in tracks_df.columns and len(tracks_df) > 0 else 1
+        
+        st.success(f"**🎵 Spotify - {artist_name}**")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Tracks", total_tracks)
+        with col2:
+            st.metric("Albums/Singles", total_albums)
+        with col3:
+            st.metric("Avg Track Pos", f"{avg_track_position:.1f}")
+    
+    def _render_youtube_top3(self, yt_channel):
+        """Render YouTube top 3 by engagement with insights"""
+        
+        st.subheader("📺 YouTube Top 3 - Best Performing")
+        
+        videos = self._get_videos_for_channel(yt_channel)
+        
+        if not videos:
+            st.info("No YouTube videos found. Collect data first.")
+            return
+        
+        # Calculate engagement for each video
+        for v in videos:
+            views = v.get("views", 0)
+            likes = v.get("likes", 0)
+            comments = v.get("comments_count", 0)
+            v["engagement"] = ((likes + comments * 2) / views * 100) if views > 0 else 0
+        
+        # Sort by engagement and get top 3
+        sorted_videos = sorted(videos, key=lambda x: x.get("engagement", 0), reverse=True)[:3]
+        
+        # Calculate channel averages
+        channel_avg = self._calculate_channel_averages(videos)
+        
+        for i, video in enumerate(sorted_videos, 1):
+            video["channel_name"] = yt_channel
+            eng = video.get("engagement", 0)
+            
+            st.markdown(f"""
+            **{i}. {video.get('title', 'Untitled')[:60]}**
+            - Engagement: **{eng:.2f}%**
+            - Views: {video.get('views', 0):,} | Likes: {video.get('likes', 0):,} | Comments: {video.get('comments_count', 0):,}
+            """)
+            
+            self._render_insight_card(video, channel_avg, f"yt_top_{i}")
+            st.divider()
+    
+    def _render_spotify_top3(self, artist_name):
+        """Render Spotify top 3 tracks by album position"""
+        
+        st.subheader("🎵 Spotify Top 3 - Tracks Principales")
+        
+        tracks_df = self.db.get_spotify_tracks(artist_name)
+        
+        if tracks_df.empty:
+            return
+        
+        # Sort by track position (lower position = more important = first track of album)
+        if "track_position" in tracks_df.columns:
+            sorted_tracks = tracks_df.sort_values("track_position").head(3)
         else:
-            st.success("No anomalies detected")
+            sorted_tracks = tracks_df.head(3)
+        
+        # Calculate average track position for comparison
+        avg_position = tracks_df["track_position"].mean() if "track_position" in tracks_df.columns and len(tracks_df) > 0 else 1
+        
+        for i, (_, track) in enumerate(sorted_tracks.iterrows(), 1):
+            track_name = track.get("track_name", "Unknown")
+            album_name = track.get("album_name", "Unknown Album")
+            track_position = track.get("track_position", 1) if pd.notna(track.get("track_position", 1)) else 1
+            
+            # Badge based on track position
+            if track_position == 1:
+                badge = "🔥"
+                note = "Single principal del álbum"
+            elif track_position <= 3:
+                badge = "⭐"
+                note = "Track destacado"
+            else:
+                badge = "📀"
+                note = f"Track #{track_position} del álbum"
+            
+            # Compare to average
+            if track_position < avg_position:
+                comparison = "🔼 Sobre el promedio del artista"
+            elif track_position > avg_position:
+                comparison = "🔽 Bajo el promedio del artista"
+            else:
+                comparison = "➖ En el promedio"
+            
+            st.markdown(f"""
+            **{badge} {i}. {track_name}**
+            - Album: {album_name}
+            - {note} | {comparison}
+            """)
+    
+    def _get_twitch_channel_data(self, channel_name: str) -> dict:
+        """Obtiene datos de Twitch para un canal"""
+        try:
+            tw_data = self.twitch.collect_channel_data(channel_name)
+            return tw_data
+        except Exception as e:
+            return {"error": str(e)}
+    
+    def _render_twitch_streamer_insight(self, channel_name: str):
+        """Render Twitch streamer insight"""
+        tw_data = self._get_twitch_channel_data(channel_name)
+        
+        if tw_data.get("error"):
+            st.warning(f"⚠️ Twitch: {tw_data.get('error')}")
+            return
+        
+        # Calculate stats
+        videos = tw_data.get("videos", [])
+        total_views = tw_data.get("total_views", 0)
+        avg_viewers = tw_data.get("avg_viewers_per_video", 0)
+        profile_views = tw_data.get("total_views", 0)  # This is actually profile_views
+        is_live = tw_data.get("is_live", False)
+        
+        st.success(f"**🎮 Twitch - {tw_data.get('display_name', channel_name)}**")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Videos", tw_data.get("video_count", 0))
+        with col2:
+            st.metric("Avg Views/Video", f"{avg_viewers:,.0f}")
+        with col3:
+            live_status = "🔴 EN VIVO" if is_live else "⚫ Offline"
+            st.metric("Status", live_status)
+        with col4:
+            current_viewers = tw_data.get("current_viewers", 0)
+            st.metric("Current Viewers", f"{current_viewers:,}" if is_live else "N/A")
+    
+    def _render_twitch_top3(self, channel_name: str, yt_channel: str = None):
+        """Render Twitch stats with stream recommendation"""
+        
+        st.subheader("🎮 Twitch Stats & Recommendations")
+        
+        tw_data = self._get_twitch_channel_data(channel_name)
+        
+        if tw_data.get("error"):
+            st.warning(f"No Twitch data for {channel_name}")
+            return
+        
+        videos = tw_data.get("videos", [])
+        
+        if not videos:
+            st.info("No videos/streams found")
+            return
+        
+        # Calculate stats
+        total_streams = len(videos)
+        total_views = sum(v.get("view_count", 0) for v in videos)
+        avg_views = total_views / total_streams if total_streams > 0 else 0
+        
+        # Calculate average stream duration
+        import re
+        total_minutes = 0
+        for v in videos:
+            duration = v.get("duration", "0m")
+            match = re.search(r'(\d+)h|(\d+)m|(\d+)s', duration)
+            if match:
+                hours = int(match.group(1)) if match.group(1) else 0
+                mins = int(match.group(2)) if match.group(2) else 0
+                secs = int(match.group(3)) if match.group(3) else 0
+                total_minutes += hours * 60 + mins + secs / 60
+        
+        avg_duration_mins = total_minutes / total_streams if total_streams > 0 else 0
         
         # Show metrics
         col1, col2, col3 = st.columns(3)
-        
         with col1:
-            st.metric("Videos Analyzed", result.get("total_videos", 0))
-        
+            st.metric("Streams Analizados", total_streams)
         with col2:
-            st.metric("Outliers Found", result.get("total_outliers", 0))
-        
+            st.metric("Avg Views/Stream", f"{avg_views:,.0f}")
         with col3:
-            st.metric("Outlier %", f"{result.get('outlier_percentage', 0):.1f}%")
+            st.metric("Avg Duración", f"{avg_duration_mins:.0f} min")
         
-        # Show outlier videos
-        if result.get("outlier_videos"):
-            st.subheader("📌 Anomalous Videos")
-            
-            outlier_df = pd.DataFrame(result["outlier_videos"])
-            st.dataframe(outlier_df[["title", "anomalies"]], use_container_width=True)
+        # Generate recommendation based on YouTube data
+        recommendation = self._generate_stream_recommendation(tw_data, yt_channel)
         
-        # Calculate channel averages for comparison
-        channel_avg = self._calculate_channel_averages(videos)
+        st.markdown("---")
+        st.markdown(f"### 💡 Recomendación de Streaming")
+        st.info(recommendation)
+    
+    def _generate_stream_recommendation(self, twitch_data: dict, yt_channel: str = None) -> str:
+        """Genera recomendación sobre horas de streaming basada en datos de YouTube"""
         
-        # Engagement Ranking Section
-        st.divider()
-        st.subheader("🏆 Top Engagement Ranking")
+        videos = twitch_data.get("videos", [])
+        if not videos:
+            return "No hay suficientes datos para generar una recomendación."
         
-        # Calculate engagement ranking
-        engagement_result = self.anomaly.rank_by_engagement(videos, top_n=5)
+        # Analyze stream performance
+        views_list = [v.get("view_count", 0) for v in videos]
+        avg_views = sum(views_list) / len(views_list) if views_list else 0
         
-        if "error" not in engagement_result:
-            # Show summary
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.metric("Average Engagement", f"{engagement_result.get('average_engagement', 0):.2f}%")
-            
-            with col2:
-                threshold = engagement_result.get('interesting_threshold', 0)
-                st.metric("'Interesting' Threshold", f">{threshold:.2f}%")
-            
-            with col3:
-                st.metric("Interesting Videos", engagement_result.get('interesting_count', 0))
-            
-            # Show top 5 engaging videos with insights
-            st.subheader("🔥 Top 5 Most Engaging Videos")
-            
-            for i, video in enumerate(engagement_result.get("top_engaging", [])[:5], 1):
-                eng = video.get("engagement_score", 0)
-                vs_avg = video.get("engagement_vs_avg_pct", 0)
-                interesting = "⭐ INTERESANTE" if video.get("is_interesting") else ""
+        # Get best performing streams
+        best_streams = [v for v in videos if v.get("view_count", 0) > avg_views * 1.5]
+        worst_streams = [v for v in videos if v.get("view_count", 0) < avg_views * 0.5]
+        
+        # Calculate average duration
+        import re
+        durations = []
+        for v in videos:
+            duration = v.get("duration", "0m")
+            match = re.search(r'(\d+)h|(\d+)m', duration)
+            if match:
+                hours = int(match.group(1)) if match.group(1) else 0
+                mins = int(match.group(2)) if match.group(2) else 0
+                durations.append(hours * 60 + mins)
+        
+        avg_duration = sum(durations) / len(durations) if durations else 0
+        
+        # Build recommendation
+        parts = []
+        
+        # Duration recommendation
+        if avg_duration < 120:  # Less than 2 hours
+            parts.append(f"⏱️ Tus streams son cortos ({avg_duration:.0f} min avg). Considerá hacer streams más largos (3-4 horas) para builds de audiencia.")
+        elif avg_duration > 240:  # More than 4 hours
+            parts.append(f"⏱️ Streams largos ({avg_duration:.0f} min avg). Considerá acortar a 2-3 horas para mantener engagement.")
+        else:
+            parts.append(f"⏱️ Duración promedio buena ({avg_duration:.0f} min). Mantené este ritmo.")
+        
+        # Frequency recommendation based on performance
+        if len(best_streams) > len(videos) * 0.3:
+            parts.append(f"📈 Tenés {len(best_streams)} streams con buen rendimiento. Aumentá frecuencia si podés.")
+        elif len(worst_streams) > len(videos) * 0.4:
+            parts.append(f"📉 Muchos streams con bajo rendimiento. Mejorá el contenido o cambiá horarios.")
+        
+        # Cross-platform recommendation if YouTube data exists
+        if yt_channel:
+            yt_videos = self._get_videos_for_channel(yt_channel)
+            if yt_videos:
+                yt_avg_views = sum(v.get("views", 0) for v in yt_videos) / len(yt_videos)
+                twitch_avg_views = avg_views
                 
-                # Add channel name to video for insights
-                video["channel_name"] = yt_channel
-                
-                st.markdown(f"""
-                **{i}. {video.get('title', 'Untitled')[:60]}**
-                - Engagement: **{eng:.2f}%** ({vs_avg:+.1f}% vs average) {interesting}
-                - Views: {video.get('views', 0):,} | Likes: {video.get('likes', 0):,} | Comments: {video.get('comments_count', 0):,}
-                """)
-                
-                # Render insight card for each video
-                self._render_insight_card(video, channel_avg, f"top_{i}")
-                
-                st.divider()
-            
-            # Show interesting videos separately
-            interesting_videos = engagement_result.get("top_interesting", [])
-            if interesting_videos:
-                st.subheader("⭐ Videos Interesantes (20%+ above average)")
-                interesting_df = pd.DataFrame(interesting_videos)
-                st.dataframe(
-                    interesting_df[["title", "engagement_score", "engagement_vs_avg_pct", "views", "likes", "comments_count"]],
-                    use_container_width=True
-                )
+                # Compare performance
+                if twitch_avg_views > yt_avg_views * 2:
+                    parts.append(f"🎯 Twitch tiene mejor engagement que YouTube ({twitch_avg_views:,.0f} vs {yt_avg_views:,.0f}). Enfocate más en streaming.")
+                elif twitch_avg_views < yt_avg_views * 0.5:
+                    parts.append(f"🎯 YouTube tiene mejor alcance ({yt_avg_views:,.0f} vs {twitch_avg_views:,.0f}). Considerá priorizar contenido de video.")
+                else:
+                    parts.append(f"🎯 Ambos plataformas tienen engagement similar. Mantené presencia en ambas.")
+        
+        return " ".join(parts) if parts else "Continuá con tu estrategia actual. Los datos se ven bien."
 
 
 def main():

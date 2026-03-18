@@ -11,6 +11,13 @@ from typing import Optional, List, Dict, Any
 import pandas as pd
 
 
+def normalize_name(name: str) -> str:
+    """Normaliza un nombre para búsqueda case-insensitive y sin espacios."""
+    if not name:
+        return ""
+    return name.strip().lower()
+
+
 class DatabaseManager:
     """
     SQLite manager for historical data storage.
@@ -105,9 +112,16 @@ class DatabaseManager:
                 track_name TEXT NOT NULL,
                 album_name TEXT,
                 release_date TEXT,
+                track_position INTEGER DEFAULT 1,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        
+        # Add missing columns if table exists
+        try:
+            cursor.execute("ALTER TABLE spotify_tracks ADD COLUMN track_position INTEGER DEFAULT 1")
+        except:
+            pass
         
         # Spotify streams table (daily)
         cursor.execute("""
@@ -202,7 +216,7 @@ class DatabaseManager:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             video.get('video_id'),
-            video.get('channel_name', ''),
+            normalize_name(video.get('channel_name', '')),
             video.get('title', ''),
             video.get('description', ''),
             video.get('published_at', ''),
@@ -250,7 +264,7 @@ class DatabaseManager:
             ORDER BY yc.published_at DESC
             LIMIT ?
         """
-        df = pd.read_sql_query(query, conn, params=(channel_name, limit))
+        df = pd.read_sql_query(query, conn, params=[normalize_name(channel_name), limit])
         conn.close()
         return df
     
@@ -264,7 +278,7 @@ class DatabaseManager:
             INSERT INTO youtube_topics 
             (channel_name, topic_id, topic_name, topic_words, topic_percentage)
             VALUES (?, ?, ?, ?, ?)
-        """, (channel_name, topic_id, topic_name, topic_words, topic_percentage))
+        """, (normalize_name(channel_name), topic_id, topic_name, topic_words, topic_percentage))
         
         conn.commit()
         conn.close()
@@ -278,7 +292,7 @@ class DatabaseManager:
             SELECT * FROM youtube_topics 
             WHERE channel_name = ?
             ORDER BY topic_percentage DESC
-        """, (channel_name,))
+        """, (normalize_name(channel_name),))
         
         topics = [dict(row) for row in cursor.fetchall()]
         conn.close()
@@ -293,14 +307,15 @@ class DatabaseManager:
         
         cursor.execute("""
             INSERT OR REPLACE INTO spotify_tracks 
-            (track_id, artist_name, track_name, album_name, release_date)
-            VALUES (?, ?, ?, ?, ?)
+            (track_id, artist_name, track_name, album_name, release_date, track_position)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, (
             track.get('track_id'),
-            track.get('artist_name', ''),
+            normalize_name(track.get('artist_name', '')),
             track.get('track_name', ''),
             track.get('album_name', ''),
-            track.get('release_date', '')
+            track.get('release_date', ''),
+            track.get('track_position', 1)
         ))
         
         conn.commit()
@@ -339,7 +354,7 @@ class DatabaseManager:
                 WHERE st.artist_name = ?
                 ORDER BY ss.stream_date
             """
-            df = pd.read_sql_query(query, conn, params=(artist_name,))
+            df = pd.read_sql_query(query, conn, params=[normalize_name(artist_name)])
         else:
             query = """
                 SELECT ss.*, st.artist_name, st.track_name
@@ -348,6 +363,29 @@ class DatabaseManager:
                 ORDER BY ss.stream_date
             """
             df = pd.read_sql_query(query, conn)
+        
+        conn.close()
+        return df
+    
+    def get_spotify_tracks(self, artist_name: str = None, limit: int = 100) -> pd.DataFrame:
+        """Get Spotify tracks for an artist"""
+        conn = self._get_connection()
+        
+        if artist_name:
+            query = """
+                SELECT * FROM spotify_tracks
+                WHERE artist_name = ?
+                ORDER BY track_name
+                LIMIT ?
+            """
+            df = pd.read_sql_query(query, conn, params=[normalize_name(artist_name), limit])
+        else:
+            query = """
+                SELECT * FROM spotify_tracks
+                ORDER BY artist_name, track_name
+                LIMIT ?
+            """
+            df = pd.read_sql_query(query, conn, params=[limit])
         
         conn.close()
         return df
@@ -364,7 +402,7 @@ class DatabaseManager:
             (channel_name, stat_date, followers, followers_gained, avg_viewers, stream_hours, total_views)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
-            channel_name,
+            normalize_name(channel_name),
             stats.get('date', datetime.now().strftime('%Y-%m-%d')),
             stats.get('followers', 0),
             stats.get('followers_gained', 0),
@@ -384,7 +422,7 @@ class DatabaseManager:
             WHERE channel_name = ?
             ORDER BY stat_date
         """
-        df = pd.read_sql_query(query, conn, params=(channel_name,))
+        df = pd.read_sql_query(query, conn, params=[normalize_name(channel_name)])
         conn.close()
         return df
     
@@ -449,6 +487,7 @@ class DatabaseManager:
     def get_channel_stats(self, platform: str, channel_name: str) -> Dict:
         """Get summary stats for a channel"""
         conn = self._get_connection()
+        normalized_name = normalize_name(channel_name)
         
         if platform == 'youtube':
             query = """
@@ -474,7 +513,7 @@ class DatabaseManager:
             return {}
         
         cursor = conn.cursor()
-        cursor.execute(query, (channel_name,))
+        cursor.execute(query, (normalized_name,))
         row = cursor.fetchone()
         conn.close()
         
@@ -504,7 +543,7 @@ class DatabaseManager:
         """, (
             video_id,
             platform,
-            channel_name,
+            normalize_name(channel_name) if channel_name else None,
             datetime.now().isoformat(),
             insight_data.get("engagement_score"),
             insight_data.get("rating"),
@@ -578,14 +617,14 @@ class DatabaseManager:
                 WHERE platform = ? AND channel_name = ?
                 ORDER BY generated_at DESC
                 LIMIT ?
-            """, conn, params=(platform, channel_name, limit))
+            """, conn, params=[platform, normalize_name(channel_name), limit])
         else:
             df = pd.read_sql_query("""
                 SELECT * FROM video_insights 
                 WHERE platform = ?
                 ORDER BY generated_at DESC
                 LIMIT ?
-            """, conn, params=(platform, limit))
+            """, conn, params=[platform, limit])
         
         conn.close()
         

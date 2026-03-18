@@ -84,7 +84,7 @@ class SpotifyClient:
         
         return None
     
-    def get_artist_top_tracks(self, artist_id: str, market: str = "ES") -> List[Dict]:
+    def get_artist_top_tracks(self, artist_id: str, market: str = "US") -> List[Dict]:
         """Obtiene los top tracks de un artista"""
         url = f"{self.BASE_URL}/artists/{artist_id}/top-tracks"
         params = {"market": market}
@@ -103,7 +103,28 @@ class SpotifyClient:
                     "duration_ms": track["duration_ms"],
                     "preview_url": track.get("preview_url")
                 }
-                for track in data["tracks"]
+                for track in data.get("tracks", [])
+            ]
+        
+        return []
+    
+    def get_album_tracks(self, album_id: str) -> List[Dict]:
+        """Obtiene los tracks de un álbum"""
+        url = f"{self.BASE_URL}/albums/{album_id}/tracks"
+        params = {"limit": 50}
+        
+        response = requests.get(url, headers=self._get_headers(), params=params)
+        
+        if response.status_code == 200:
+            data = response.json()
+            return [
+                {
+                    "track_id": track["id"],
+                    "track_name": track["name"],
+                    "track_number": track.get("track_number", 0),
+                    "duration_ms": track.get("duration_ms", 0)
+                }
+                for track in data.get("items", [])
             ]
         
         return []
@@ -158,6 +179,19 @@ class SpotifyClient:
         if not artist:
             return {"error": f"Artista '{artist_name}' no encontrado"}
         
+        # Check if the artist name matches reasonably
+        returned_name = artist.get("name", "").lower()
+        search_name = artist_name.lower()
+        
+        # Simple check - if names are very different, flag it
+        name_match_threshold = 0.5
+        if returned_name and search_name:
+            # Check if search name is in returned name or vice versa
+            matches = search_name in returned_name or returned_name in search_name
+            if not matches and len(search_name) > 3:
+                # Names don't match well, but still return data with warning
+                artist["_name_warning"] = f"Buscaste '{artist_name}' pero Spotify devolvió '{artist.get('name')}'"
+        
         artist_id = artist["id"]
         
         # Get top tracks
@@ -167,15 +201,57 @@ class SpotifyClient:
         albums = self.get_artist_albums(artist_id, limit=10)
         
         return {
-            "artist_name": artist_name,
+            "artist_name": artist.get("name", artist_name),
             "artist_id": artist_id,
             "followers": artist.get("followers", {}).get("total", 0),
             "popularity": artist.get("popularity", 0),
             "genres": artist.get("genres", []),
             "top_tracks": top_tracks[:10],
             "recent_albums": albums[:10],
-            "image_url": artist["images"][0]["url"] if artist["images"] else None
+            "image_url": artist["images"][0]["url"] if artist.get("images") else None,
+            "_name_warning": artist.get("_name_warning")
         }
+    
+    def search_tracks(self, artist_name: str, limit: int = 50) -> List[Dict]:
+        """Busca tracks de un artista"""
+        url = f"{self.BASE_URL}/search"
+        params = {
+            "q": artist_name,
+            "type": "track",
+            "limit": min(limit, 50)  # Spotify max is 50
+        }
+        
+        response = requests.get(url, headers=self._get_headers(), params=params)
+        
+        if response.status_code == 401:
+            self._authenticate()
+            response = requests.get(url, headers=self._get_headers(), params=params)
+        
+        if response.status_code == 200:
+            data = response.json()
+            items = data.get("tracks", {}).get("items", [])
+            
+            # Filter tracks that match the artist name
+            matching_tracks = []
+            for track in items:
+                artists = track.get("artists", [])
+                artist_names = [a.get("name", "").lower() for a in artists]
+                
+                # Include if artist name is in the track's artists
+                if artist_name.lower() in " ".join(artist_names) or any(artist_name.lower() in name for name in artist_names):
+                    matching_tracks.append({
+                        "track_id": track["id"],
+                        "track_name": track["name"],
+                        "album_name": track["album"]["name"],
+                        "album_id": track["album"]["id"],
+                        "popularity": track.get("popularity", 0) or 0,
+                        "duration_ms": track.get("duration_ms", 0),
+                        "preview_url": track.get("preview_url")
+                    })
+            
+            return matching_tracks
+        
+        return []
     
     def collect_artist_data(self, artist_name: str) -> Dict:
         """Recolecta todos los datos de un artista"""
@@ -184,26 +260,34 @@ class SpotifyClient:
         if "error" in stats:
             return stats
         
-        # Estructurar para guardar en DB
         tracks = []
-        for track in stats.get("top_tracks", []):
-            tracks.append({
-                "track_id": track["track_id"],
-                "artist_name": stats["artist_name"],
-                "track_name": track["track_name"],
-                "album_name": track["album_name"],
-                "release_date": track.get("release_date", ""),
-                "popularity": track.get("popularity", 0)
-            })
+        
+        # Collect tracks from albums
+        for album in stats.get("recent_albums", []):
+            album_tracks = self.get_album_tracks(album["album_id"])
+            for album_track in album_tracks:
+                tracks.append({
+                    "track_id": album_track["track_id"],
+                    "artist_name": stats["artist_name"],
+                    "track_name": album_track["track_name"],
+                    "album_name": album["album_name"],
+                    "release_date": album["release_date"],
+                    "track_position": album_track.get("track_number", 1)
+                })
+        
+        # Sort by track position (earlier tracks in album are more important)
+        tracks.sort(key=lambda x: x.get("track_position", 1))
         
         return {
             "artist_name": artist_name,
+            "spotify_name": stats.get("artist_name"),
             "artist_id": stats.get("artist_id"),
             "followers": stats.get("followers", 0),
-            "popularity": stats.get("popularity", 0),
+            "spotify_popularity": stats.get("popularity", 0),
             "genres": stats.get("genres", []),
             "tracks": tracks,
-            "albums": stats.get("recent_albums", [])
+            "albums": stats.get("recent_albums", []),
+            "_name_warning": stats.get("_name_warning")
         }
 
 
