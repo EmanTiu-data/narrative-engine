@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-from app.db import DatabaseManager
+from app.db import DatabaseManager, normalize_name
 from app.youtube_client import YouTubeClient
 from app.spotify_client import SpotifyClient
 from app.twitch_client import TwitchClient
@@ -137,7 +137,7 @@ class NarrativeDashboard:
                         video_id=video_id,
                         platform="youtube",
                         insight_data=insight_data,
-                        channel_name=video.get("channel_name", "")
+                        channel_name=normalize_name(video.get("channel_name", ""))
                     )
                     
                     st.rerun()
@@ -154,7 +154,7 @@ class NarrativeDashboard:
                     video_id=video_id,
                     platform="youtube",
                     insight_data=insight_data,
-                    channel_name=video.get("channel_name", "")
+                    channel_name=normalize_name(video.get("channel_name", ""))
                 )
                 
                 # Display
@@ -182,11 +182,11 @@ class NarrativeDashboard:
                 COUNT(yc.id) as comments_count
             FROM youtube_videos yv
             LEFT JOIN youtube_comments yc ON yv.video_id = yc.video_id
-            WHERE LOWER(yv.channel_name) = LOWER(?)
+            WHERE yv.channel_name = ?
             GROUP BY yv.video_id
         """
         
-        videos_df = pd.read_sql_query(query, conn, params=(channel_name,))
+        videos_df = pd.read_sql_query(query, conn, params=[normalize_name(channel_name)])
         conn.close()
         
         videos = []
@@ -514,14 +514,14 @@ class NarrativeDashboard:
                 COUNT(yc.id) as comments_count
             FROM youtube_videos yv
             LEFT JOIN youtube_comments yc ON yv.video_id = yc.video_id
-            WHERE LOWER(yv.channel_name) = ?
+            WHERE yv.channel_name = ?
             GROUP BY yv.video_id
             ORDER BY yv.published_at DESC
             LIMIT 50
         """
         
         import pandas as pd
-        videos_df = pd.read_sql_query(query, conn, params=(yt_channel_normalized,))
+        videos_df = pd.read_sql_query(query, conn, params=[normalize_name(yt_channel)])
         conn.close()
         
         videos = []
@@ -537,45 +537,6 @@ class NarrativeDashboard:
         if not videos:
             st.warning("No videos found")
             return
-        
-        # Channel Insight Button
-        st.subheader("📊 Channel Overview")
-        
-        col1, col2 = st.columns([1, 4])
-        
-        with col1:
-            generate_channel_insight = st.button("🎯 Generate Channel Insight", type="primary")
-        
-        with col2:
-            if generate_channel_insight:
-                with st.spinner("Generating channel insight..."):
-                    # Generate channel insight
-                    channel_insight = self.insights.generate_channel_insight(
-                        videos=videos,
-                        channel_name=yt_channel
-                    )
-                    
-                    # Display channel insight
-                    st.success(f"**{channel_insight['rating_badge']} CHANNEL INSIGHT**")
-                    st.write(channel_insight.get("insight_text", ""))
-                    
-                    if channel_insight.get("topic_insight"):
-                        st.write(channel_insight.get("topic_insight", ""))
-                    
-                    # Show key metrics
-                    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-                    with col_m1:
-                        st.metric("Total Videos", channel_insight.get("total_videos", 0))
-                    with col_m2:
-                        st.metric("Avg Engagement", f"{channel_insight.get('avg_engagement', 0):.2f}%")
-                    with col_m3:
-                        st.metric("High Perf", channel_insight.get("high_engagement_videos", 0))
-                    with col_m4:
-                        st.metric("Needs Work", channel_insight.get("low_engagement_videos", 0))
-        
-        st.divider()
-        
-        # Detect anomalies
         result = self.anomaly.analyze_video_metrics(videos)
         
         # Show alert
