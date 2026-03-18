@@ -198,7 +198,7 @@ class TestVideoInsightGeneration:
         insight = {
             "rating": "A+",
             "rating_badge": "🟢",
-            "insight_text": "Video A+ - 250% más engagement.",
+            "insight_text": "250% más engagement que promedio. Drivers: alto ratio comments/vistas, likes elevados.",
             "drivers": ["alto ratio comments/vistas", "likes elevados"],
             "anomalies": [],
             "tip": "Tu horario de publicación es óptimo"
@@ -206,7 +206,7 @@ class TestVideoInsightGeneration:
         
         formatted = engine.format_insight_for_display(insight)
         
-        assert "Video 🟢A+" in formatted
+        assert "250% más engagement" in formatted
         assert "Drivers:" in formatted
         assert "Tip:" in formatted
 
