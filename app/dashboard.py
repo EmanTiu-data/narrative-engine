@@ -441,6 +441,7 @@ class NarrativeDashboard:
     def _render_spotify_artist_insight(self, artist_name):
         """Render Spotify artist insight"""
         tracks_df = self.db.get_spotify_tracks(artist_name)
+        stats = self.db.get_spotify_tracks(artist_name)
         
         if tracks_df.empty:
             st.info(f"No Spotify data for {artist_name}")
@@ -448,16 +449,18 @@ class NarrativeDashboard:
         
         # Calculate artist stats
         total_tracks = len(tracks_df)
-        avg_popularity = tracks_df["popularity"].mean() if "popularity" in tracks_df.columns else 0
+        total_albums = tracks_df["album_name"].nunique() if "album_name" in tracks_df.columns else 0
         
         st.success(f"**🎵 Spotify - {artist_name}**")
-        st.write(f"Artist with {total_tracks} tracks in catalog.")
+        st.write(f"Artist with {total_tracks} tracks across {total_albums} releases.")
         
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
             st.metric("Total Tracks", total_tracks)
         with col2:
-            st.metric("Avg Popularity", f"{avg_popularity:.0f}" if avg_popularity else "N/A")
+            st.metric("Albums/Singles", total_albums)
+        with col3:
+            st.metric("Followers", stats.get("artist_id", "N/A"))
     
     def _render_youtube_top3(self, yt_channel):
         """Render YouTube top 3 by engagement with insights"""
@@ -511,6 +514,7 @@ class NarrativeDashboard:
         if "popularity" in tracks_df.columns:
             sorted_tracks = tracks_df.sort_values("popularity", ascending=False).head(3)
         else:
+            # If no popularity, show most recent
             sorted_tracks = tracks_df.head(3)
         
         for i, (_, track) in enumerate(sorted_tracks.iterrows(), 1):
@@ -518,10 +522,18 @@ class NarrativeDashboard:
             album_name = track.get("album_name", "Unknown Album")
             popularity = track.get("popularity", 0)
             
+            # Create a visual indicator based on popularity
+            if popularity >= 50:
+                badge = "🔥"
+            elif popularity >= 30:
+                badge = "⭐"
+            else:
+                badge = "📀"
+            
             st.markdown(f"""
-            **{i}. {track_name}**
+            **{badge} {i}. {track_name}**
             - Album: {album_name}
-            - Popularity: {popularity if popularity else 'N/A'}
+            - Popularity Score: {popularity}
             """)
 
 

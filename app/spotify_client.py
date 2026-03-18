@@ -198,6 +198,47 @@ class SpotifyClient:
             "image_url": artist["images"][0]["url"] if artist["images"] else None
         }
     
+    def search_tracks(self, artist_name: str, limit: int = 50) -> List[Dict]:
+        """Busca tracks de un artista"""
+        url = f"{self.BASE_URL}/search"
+        params = {
+            "q": artist_name,
+            "type": "track",
+            "limit": min(limit, 50)  # Spotify max is 50
+        }
+        
+        response = requests.get(url, headers=self._get_headers(), params=params)
+        
+        if response.status_code == 401:
+            self._authenticate()
+            response = requests.get(url, headers=self._get_headers(), params=params)
+        
+        if response.status_code == 200:
+            data = response.json()
+            items = data.get("tracks", {}).get("items", [])
+            
+            # Filter tracks that match the artist name
+            matching_tracks = []
+            for track in items:
+                artists = track.get("artists", [])
+                artist_names = [a.get("name", "").lower() for a in artists]
+                
+                # Include if artist name is in the track's artists
+                if artist_name.lower() in " ".join(artist_names) or any(artist_name.lower() in name for name in artist_names):
+                    matching_tracks.append({
+                        "track_id": track["id"],
+                        "track_name": track["name"],
+                        "album_name": track["album"]["name"],
+                        "album_id": track["album"]["id"],
+                        "popularity": track.get("popularity", 0) or 0,
+                        "duration_ms": track.get("duration_ms", 0),
+                        "preview_url": track.get("preview_url")
+                    })
+            
+            return matching_tracks
+        
+        return []
+    
     def collect_artist_data(self, artist_name: str) -> Dict:
         """Recolecta todos los datos de un artista"""
         stats = self.get_artist_stats(artist_name)
@@ -205,31 +246,34 @@ class SpotifyClient:
         if "error" in stats:
             return stats
         
-        # Estructurar para guardar en DB
         tracks = []
-        for track in stats.get("top_tracks", []):
-            tracks.append({
-                "track_id": track["track_id"],
-                "artist_name": stats["artist_name"],
-                "track_name": track["track_name"],
-                "album_name": track["album_name"],
-                "release_date": track.get("release_date", ""),
-                "popularity": track.get("popularity", 0)
-            })
         
-        # Si no hay top tracks, obtener tracks de albums
-        if not tracks:
-            for album in stats.get("recent_albums", [])[:5]:
-                album_tracks = self.get_album_tracks(album["album_id"])
-                for album_track in album_tracks:
-                    tracks.append({
-                        "track_id": album_track["track_id"],
-                        "artist_name": stats["artist_name"],
-                        "track_name": album_track["track_name"],
-                        "album_name": album["album_name"],
-                        "release_date": album["release_date"],
-                        "popularity": 0
-                    })
+        # First, try to get tracks from albums
+        for album in stats.get("recent_albums", []):
+            album_tracks = self.get_album_tracks(album["album_id"])
+            for album_track in album_tracks:
+                tracks.append({
+                    "track_id": album_track["track_id"],
+                    "artist_name": stats["artist_name"],
+                    "track_name": album_track["track_name"],
+                    "album_name": album["album_name"],
+                    "release_date": album["release_date"],
+                    "popularity": album_track.get("track_number", 1) * 10  # Use track number as proxy for popularity
+                })
+        
+        # Also try search as backup
+        search_tracks = self.search_tracks(artist_name, limit=50)
+        for track in search_tracks:
+            # Check if not already in tracks
+            if not any(t.get("track_id") == track.get("track_id") for t in tracks):
+                tracks.append({
+                    "track_id": track.get("track_id"),
+                    "artist_name": stats["artist_name"],
+                    "track_name": track.get("track_name"),
+                    "album_name": track.get("album_name", "Single"),
+                    "release_date": "",
+                    "popularity": track.get("popularity", 0)
+                })
         
         return {
             "artist_name": artist_name,
