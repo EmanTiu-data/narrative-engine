@@ -81,6 +81,24 @@ def get_rating_badge(rating: str) -> str:
 # INSIGHTS ENGINE
 # ============================================================================
 
+# ============================================================================
+# CHANNEL INSIGHTS
+# ============================================================================
+
+CHANNEL_ENGAGEMENT_TEMPLATES = {
+    "viral_channel": "📊 Canal con engagement excepcional. {high_engagement_pct:.0f}% de videos sobre promedio. {driver_insight}",
+    "consistent_channel": "📊 Engagement consistente ({avg_engagement:.2f}%). {consistency_note}",
+    "declining_channel": "📊 Tendencia a la baja detectada. {declining_pct:.0f}% de videos bajo promedio. {recommendation}",
+    "mixed_channel": "📊 Engagement mixto. {high_count} videos destacados, {low_count} bajo promedio."
+}
+
+TOPIC_TEMPLATES = {
+    "dominant": "Topic dominante: **{topic}** ({pct:.0f}% de comentarios).",
+    "diverse": "Topics diversos sin tema predominante.",
+    "emerging": "Topic emergente detectado: **{topic}**. Considera profundizar."
+}
+
+
 class InsightsEngine:
     """
     Motor de insights on-demand para videos y canales.
@@ -97,6 +115,132 @@ class InsightsEngine:
             db: Instancia de DatabaseManager (opcional, para cachear insights)
         """
         self.db = db
+    
+    def generate_channel_insight(self, videos: List[Dict[str, Any]], 
+                                 channel_name: str,
+                                 top_topics: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+        """
+        Genera insight completo para un canal.
+        
+        Args:
+            videos: Lista de diccionarios con keys 'views', 'likes', 'comments_count'
+            channel_name: Nombre del canal
+            top_topics: Lista de topics LDA (opcional)
+            
+        Returns:
+            Insight de canal con análisis global y recomendaciones
+        """
+        if not videos:
+            return {
+                "error": "No videos provided",
+                "insight_text": "No hay datos suficientes para generar insights."
+            }
+        
+        n = len(videos)
+        
+        # Calculate individual engagements
+        engagements = []
+        for v in videos:
+            views = v.get("views", 0)
+            likes = v.get("likes", 0)
+            comments = v.get("comments_count", v.get("comments", 0))
+            eng = self.calculate_engagement(views, likes, comments)
+            engagements.append(eng)
+        
+        # Calculate channel averages
+        avg_engagement = sum(engagements) / n if n > 0 else 0
+        
+        # Count high/low engagement videos
+        high_count = sum(1 for e in engagements if e > avg_engagement * 1.5)
+        low_count = sum(1 for e in engagements if e < avg_engagement * 0.5)
+        high_engagement_pct = (high_count / n * 100) if n > 0 else 0
+        declining_pct = (low_count / n * 100) if n > 0 else 0
+        
+        # Identify top drivers
+        total_views = sum(v.get("views", 0) for v in videos)
+        total_likes = sum(v.get("likes", 0) for v in videos)
+        total_comments = sum(v.get("comments_count", 0) for v in videos)
+        
+        # Ratio analysis
+        avg_likes_per_view = (total_likes / total_views * 100) if total_views > 0 else 0
+        avg_comments_per_view = (total_comments / total_views * 100) if total_views > 0 else 0
+        
+        # Generate insight text based on pattern
+        if high_engagement_pct > 50:
+            template_key = "viral_channel"
+            insight_text = CHANNEL_ENGAGEMENT_TEMPLATES[template_key].format(
+                high_engagement_pct=high_engagement_pct,
+                driver_insight=self._identify_channel_driver(avg_likes_per_view, avg_comments_per_view)
+            )
+        elif declining_pct > 50:
+            template_key = "declining_channel"
+            insight_text = CHANNEL_ENGAGEMENT_TEMPLATES[template_key].format(
+                declining_pct=declining_pct,
+                recommendation="Revisa tu estrategia de contenido y frecuencia."
+            )
+        elif high_count > 0 and low_count > 0:
+            template_key = "mixed_channel"
+            insight_text = CHANNEL_ENGAGEMENT_TEMPLATES[template_key].format(
+                high_count=high_count,
+                low_count=low_count
+            )
+        else:
+            template_key = "consistent_channel"
+            consistency_note = "Videos con engagement estable."
+            if avg_likes_per_view > 5:
+                consistency_note += " Alta tasa de likes."
+            elif avg_comments_per_view > 2:
+                consistency_note += " Buena conversación en comentarios."
+            insight_text = CHANNEL_ENGAGEMENT_TEMPLATES[template_key].format(
+                avg_engagement=avg_engagement,
+                consistency_note=consistency_note
+            )
+        
+        # Add topic insight if available
+        topic_insight = ""
+        if top_topics and len(top_topics) > 0:
+            top_topic = top_topics[0]
+            topic_pct = top_topic.get("topic_percentage", 0)
+            topic_name = top_topic.get("topic_name", "general")
+            
+            if topic_pct > 40:
+                topic_insight = TOPIC_TEMPLATES["dominant"].format(
+                    topic=topic_name,
+                    pct=topic_pct
+                )
+            elif topic_pct < 20:
+                topic_insight = TOPIC_TEMPLATES["diverse"]
+            else:
+                topic_insight = TOPIC_TEMPLATES["emerging"].format(topic=topic_name)
+        
+        # Calculate overall rating
+        overall_pct_change = 0  # Channel doesn't have a comparison
+        rating = calculate_rating(overall_pct_change)
+        
+        return {
+            "channel_name": channel_name,
+            "total_videos": n,
+            "avg_engagement": round(avg_engagement, 2),
+            "high_engagement_videos": high_count,
+            "low_engagement_videos": low_count,
+            "avg_likes_ratio": round(avg_likes_per_view, 2),
+            "avg_comments_ratio": round(avg_comments_per_view, 2),
+            "insight_text": insight_text,
+            "topic_insight": topic_insight,
+            "rating": rating,
+            "rating_badge": get_rating_badge(rating),
+            "generated_at": datetime.now().isoformat()
+        }
+    
+    def _identify_channel_driver(self, likes_ratio: float, comments_ratio: float) -> str:
+        """Identifica el driver principal del canal."""
+        if comments_ratio > likes_ratio * 0.5:
+            return "Driver principal: comunidad activa en comentarios."
+        elif likes_ratio > 5:
+            return "Driver principal: contenido que genera likes."
+        elif likes_ratio > 3:
+            return "Driver principal: buena calidad de engagement."
+        return "Engagement orgánico sin driver claro."
     
     def calculate_engagement(self, views: int, likes: int, comments: int) -> float:
         """

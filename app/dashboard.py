@@ -538,6 +538,43 @@ class NarrativeDashboard:
             st.warning("No videos found")
             return
         
+        # Channel Insight Button
+        st.subheader("📊 Channel Overview")
+        
+        col1, col2 = st.columns([1, 4])
+        
+        with col1:
+            generate_channel_insight = st.button("🎯 Generate Channel Insight", type="primary")
+        
+        with col2:
+            if generate_channel_insight:
+                with st.spinner("Generating channel insight..."):
+                    # Generate channel insight
+                    channel_insight = self.insights.generate_channel_insight(
+                        videos=videos,
+                        channel_name=yt_channel
+                    )
+                    
+                    # Display channel insight
+                    st.success(f"**{channel_insight['rating_badge']} CHANNEL INSIGHT**")
+                    st.write(channel_insight.get("insight_text", ""))
+                    
+                    if channel_insight.get("topic_insight"):
+                        st.write(channel_insight.get("topic_insight", ""))
+                    
+                    # Show key metrics
+                    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                    with col_m1:
+                        st.metric("Total Videos", channel_insight.get("total_videos", 0))
+                    with col_m2:
+                        st.metric("Avg Engagement", f"{channel_insight.get('avg_engagement', 0):.2f}%")
+                    with col_m3:
+                        st.metric("High Perf", channel_insight.get("high_engagement_videos", 0))
+                    with col_m4:
+                        st.metric("Needs Work", channel_insight.get("low_engagement_videos", 0))
+        
+        st.divider()
+        
         # Detect anomalies
         result = self.anomaly.analyze_video_metrics(videos)
         
