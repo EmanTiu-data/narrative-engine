@@ -26,6 +26,7 @@ from app.twitch_client import TwitchClient
 from app.lda_analyzer import LDAAnalyzer
 from app.correlation import CorrelationEngine, GracefulDegradation
 from app.anomaly_detector import VideoAnomalyDetector
+from app.insights_engine import InsightsEngine, get_rating_badge
 
 
 # Page config
@@ -48,6 +49,157 @@ class NarrativeDashboard:
         self.correlation = CorrelationEngine(min_correlation=0.2)  # Lower threshold
         self.graceful = GracefulDegradation()
         self.anomaly = VideoAnomalyDetector(z_threshold=2.0)  # Lower threshold from 3 to 2
+        self.insights = InsightsEngine()
+    
+    def _calculate_channel_averages(self, videos: list) -> dict:
+        """Calcula promedios del canal para comparaciones."""
+        if not videos:
+            return {}
+        
+        total_views = sum(v.get("views", 0) for v in videos)
+        total_likes = sum(v.get("likes", 0) for v in videos)
+        total_comments = sum(v.get("comments_count", 0) for v in videos)
+        n = len(videos)
+        
+        avg_views = total_views / n
+        avg_likes = total_likes / n
+        avg_comments = total_comments / n
+        
+        # Calculate average engagement
+        avg_engagement = 0
+        for v in videos:
+            views = v.get("views", 0)
+            if views > 0:
+                likes = v.get("likes", 0)
+                comments = v.get("comments_count", 0)
+                avg_engagement += ((likes + comments * 2) / views * 100)
+        avg_engagement /= n
+        
+        return {
+            "avg_views": avg_views,
+            "avg_likes": avg_likes,
+            "avg_comments": avg_comments,
+            "avg_engagement": avg_engagement
+        }
+    
+    def _render_insight_card(self, video: dict, channel_avg: dict, key_prefix: str = ""):
+        """Renderiza una tarjeta de insight para un video."""
+        video_id = video.get("video_id", "unknown")
+        
+        # Check if insight already exists
+        existing_insight = self.db.get_video_insight(video_id, "youtube")
+        
+        # Create unique key for Streamlit widgets
+        insight_key = f"insight_{key_prefix}_{video_id}"
+        generate_key = f"generate_{key_prefix}_{video_id}"
+        regenerate_key = f"regenerate_{key_prefix}_{video_id}"
+        
+        # Show existing insight or generate button
+        if existing_insight:
+            col1, col2 = st.columns([4, 1])
+            
+            with col1:
+                rating = existing_insight.get("rating", "")
+                badge = get_rating_badge(rating)
+                st.markdown(f"**💡 INSIGHT** {badge}{rating} - Guardado: {existing_insight.get('generated_at', '')[:16]}")
+                st.write(existing_insight.get("insight_text", ""))
+                
+                # Show drivers
+                drivers = existing_insight.get("drivers", [])
+                if drivers:
+                    st.write(f"*Drivers: {', '.join(drivers)}*")
+                
+                # Show tip
+                tip = existing_insight.get("tip", "")
+                if tip:
+                    st.write(f"*Tip: {tip}*")
+                
+                # Show anomalies
+                anomalies = existing_insight.get("anomalies", [])
+                for anomaly in anomalies:
+                    st.warning(anomaly.get("insight_text", ""))
+            
+            with col2:
+                if st.button("🔄", key=regenerate_key, help="Regenerar insight"):
+                    # Delete old insight
+                    # Generate new one
+                    channel_avg_for_video = self._calculate_channel_averages(
+                        self._get_videos_for_channel(video.get("channel_name", ""))
+                    )
+                    
+                    insight_data = self.insights.generate_video_insight(
+                        video_data=video,
+                        channel_avg=channel_avg_for_video
+                    )
+                    
+                    # Save to DB
+                    self.db.save_video_insight(
+                        video_id=video_id,
+                        platform="youtube",
+                        insight_data=insight_data,
+                        channel_name=video.get("channel_name", "")
+                    )
+                    
+                    st.rerun()
+        else:
+            if st.button("💡 Generar Insight", key=generate_key):
+                # Generate insight
+                insight_data = self.insights.generate_video_insight(
+                    video_data=video,
+                    channel_avg=channel_avg
+                )
+                
+                # Save to DB
+                self.db.save_video_insight(
+                    video_id=video_id,
+                    platform="youtube",
+                    insight_data=insight_data,
+                    channel_name=video.get("channel_name", "")
+                )
+                
+                # Display
+                st.success(f"**Video {get_rating_badge(insight_data['rating'])}{insight_data['rating']}** - {insight_data['insight_text']}")
+                
+                if insight_data.get("drivers"):
+                    st.write(f"*Drivers: {', '.join(insight_data['drivers'])}*")
+                
+                if insight_data.get("tip"):
+                    st.write(f"*Tip: {insight_data['tip']}*")
+                
+                for anomaly in insight_data.get("anomalies", []):
+                    st.warning(anomaly.get("insight_text", ""))
+    
+    def _get_videos_for_channel(self, channel_name: str) -> list:
+        """Obtiene todos los videos de un canal."""
+        conn = self.db._get_connection()
+        
+        query = """
+            SELECT DISTINCT 
+                yv.video_id,
+                yv.title,
+                yv.views,
+                yv.likes,
+                COUNT(yc.id) as comments_count
+            FROM youtube_videos yv
+            LEFT JOIN youtube_comments yc ON yv.video_id = yc.video_id
+            WHERE LOWER(yv.channel_name) = LOWER(?)
+            GROUP BY yv.video_id
+        """
+        
+        videos_df = pd.read_sql_query(query, conn, params=(channel_name,))
+        conn.close()
+        
+        videos = []
+        for _, row in videos_df.iterrows():
+            videos.append({
+                "video_id": row["video_id"],
+                "title": row["title"] if pd.notna(row["title"]) else "Untitled",
+                "views": row["views"] if pd.notna(row["views"]) else 0,
+                "likes": row["likes"] if pd.notna(row["likes"]) else 0,
+                "comments_count": row["comments_count"] if pd.notna(row["comments_count"]) else 0
+            })
+        
+        return videos
     
     def run(self):
         """Run dashboard"""
@@ -416,6 +568,9 @@ class NarrativeDashboard:
             outlier_df = pd.DataFrame(result["outlier_videos"])
             st.dataframe(outlier_df[["title", "anomalies"]], use_container_width=True)
         
+        # Calculate channel averages for comparison
+        channel_avg = self._calculate_channel_averages(videos)
+        
         # Engagement Ranking Section
         st.divider()
         st.subheader("🏆 Top Engagement Ranking")
@@ -437,7 +592,7 @@ class NarrativeDashboard:
             with col3:
                 st.metric("Interesting Videos", engagement_result.get('interesting_count', 0))
             
-            # Show top 5 engaging videos
+            # Show top 5 engaging videos with insights
             st.subheader("🔥 Top 5 Most Engaging Videos")
             
             for i, video in enumerate(engagement_result.get("top_engaging", [])[:5], 1):
@@ -445,11 +600,19 @@ class NarrativeDashboard:
                 vs_avg = video.get("engagement_vs_avg_pct", 0)
                 interesting = "⭐ INTERESANTE" if video.get("is_interesting") else ""
                 
+                # Add channel name to video for insights
+                video["channel_name"] = yt_channel
+                
                 st.markdown(f"""
-                **{i}. {video.get('title', 'Untitled')[:60]}...**
+                **{i}. {video.get('title', 'Untitled')[:60]}**
                 - Engagement: **{eng:.2f}%** ({vs_avg:+.1f}% vs average) {interesting}
                 - Views: {video.get('views', 0):,} | Likes: {video.get('likes', 0):,} | Comments: {video.get('comments_count', 0):,}
                 """)
+                
+                # Render insight card for each video
+                self._render_insight_card(video, channel_avg, f"top_{i}")
+                
+                st.divider()
             
             # Show interesting videos separately
             interesting_videos = engagement_result.get("top_interesting", [])
