@@ -335,8 +335,8 @@ class NarrativeDashboard:
             st.metric("YouTube Comments", len(yt_comments))
         
         with col2:
-            sp_streams = self.db.get_spotify_streams()
-            st.metric("Spotify Tracks", len(sp_streams))
+            sp_tracks = self.db.get_spotify_tracks()
+            st.metric("Spotify Tracks", len(sp_tracks))
         
         with col3:
             if twitch_channel:
@@ -425,14 +425,11 @@ class NarrativeDashboard:
         
         # Spotify
         if spotify_artist:
-            sp_data = self.db.get_spotify_streams(spotify_artist)
-            if len(sp_data) > 0:
-                sp_df = sp_data.copy()
-                sp_df["date"] = pd.to_datetime(sp_df["stream_date"]).dt.date
-                sp_agg = sp_df.groupby("date").agg({
-                    "streams": "sum"
-                }).reset_index()
-                platform_data["spotify"] = sp_agg
+            sp_tracks = self.db.get_spotify_tracks(spotify_artist)
+            if len(sp_tracks) > 0:
+                st.info(f"Spotify: {len(sp_tracks)} tracks collected for {spotify_artist}")
+            else:
+                st.info(f"Collect Spotify data for {spotify_artist} in Data Collection tab")
         
         # Twitch
         if twitch_channel:

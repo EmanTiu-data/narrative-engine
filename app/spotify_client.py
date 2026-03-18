@@ -84,7 +84,7 @@ class SpotifyClient:
         
         return None
     
-    def get_artist_top_tracks(self, artist_id: str, market: str = "ES") -> List[Dict]:
+    def get_artist_top_tracks(self, artist_id: str, market: str = "US") -> List[Dict]:
         """Obtiene los top tracks de un artista"""
         url = f"{self.BASE_URL}/artists/{artist_id}/top-tracks"
         params = {"market": market}
@@ -103,7 +103,28 @@ class SpotifyClient:
                     "duration_ms": track["duration_ms"],
                     "preview_url": track.get("preview_url")
                 }
-                for track in data["tracks"]
+                for track in data.get("tracks", [])
+            ]
+        
+        return []
+    
+    def get_album_tracks(self, album_id: str) -> List[Dict]:
+        """Obtiene los tracks de un álbum"""
+        url = f"{self.BASE_URL}/albums/{album_id}/tracks"
+        params = {"limit": 50}
+        
+        response = requests.get(url, headers=self._get_headers(), params=params)
+        
+        if response.status_code == 200:
+            data = response.json()
+            return [
+                {
+                    "track_id": track["id"],
+                    "track_name": track["name"],
+                    "track_number": track.get("track_number", 0),
+                    "duration_ms": track.get("duration_ms", 0)
+                }
+                for track in data.get("items", [])
             ]
         
         return []
@@ -195,6 +216,20 @@ class SpotifyClient:
                 "release_date": track.get("release_date", ""),
                 "popularity": track.get("popularity", 0)
             })
+        
+        # Si no hay top tracks, obtener tracks de albums
+        if not tracks:
+            for album in stats.get("recent_albums", [])[:5]:
+                album_tracks = self.get_album_tracks(album["album_id"])
+                for album_track in album_tracks:
+                    tracks.append({
+                        "track_id": album_track["track_id"],
+                        "artist_name": stats["artist_name"],
+                        "track_name": album_track["track_name"],
+                        "album_name": album["album_name"],
+                        "release_date": album["release_date"],
+                        "popularity": 0
+                    })
         
         return {
             "artist_name": artist_name,

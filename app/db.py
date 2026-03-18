@@ -359,6 +359,29 @@ class DatabaseManager:
         conn.close()
         return df
     
+    def get_spotify_tracks(self, artist_name: str = None, limit: int = 100) -> pd.DataFrame:
+        """Get Spotify tracks for an artist"""
+        conn = self._get_connection()
+        
+        if artist_name:
+            query = """
+                SELECT * FROM spotify_tracks
+                WHERE artist_name = ?
+                ORDER BY track_name
+                LIMIT ?
+            """
+            df = pd.read_sql_query(query, conn, params=[normalize_name(artist_name), limit])
+        else:
+            query = """
+                SELECT * FROM spotify_tracks
+                ORDER BY artist_name, track_name
+                LIMIT ?
+            """
+            df = pd.read_sql_query(query, conn, params=[limit])
+        
+        conn.close()
+        return df
+    
     # ==================== Twitch ====================
     
     def insert_twitch_stats(self, channel_name: str, stats: Dict):
