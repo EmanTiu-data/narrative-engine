@@ -333,11 +333,4 @@ jobs:
       
       - name: Check imports
         run: |
-          python -c "
-            from app.calculations import LDAAnalyzer, CorrelationEngine, AnomalyDetector
-            from app.youtube_client import YouTubeClient
-            from app.spotify_client import SpotifyClient
-            from app.twitch_client import TwitchClient
-            from app.db import Database
-            print('All imports successful')
-          "
+          python -c "from app.lda_analyzer import LDAAnalyzer; from app.correlation import CorrelationEngine; from app.anomaly_detector import AnomalyDetector; from app.youtube_client import YouTubeClient; from app.spotify_client import SpotifyClient; from app.twitch_client import TwitchClient; from app.db import Database; print('All imports successful')"
