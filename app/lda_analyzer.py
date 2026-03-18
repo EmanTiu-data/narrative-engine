@@ -1,11 +1,19 @@
 """
 LDA Topic Analyzer
-Extrae temas latentes de comentarios de YouTube
+Extrae temas latentes de comentarios usando Latent Dirichlet Allocation (LDA).
+
+Este módulo proporciona capacidades de NLP para identificar automáticamente
+temas y patrones en grandes volúmenes de texto, ideal para analizar
+comentarios de YouTube, Twitch y otras plataformas.
+
+Ejemplo de uso:
+    analyzer = LDAAnalyzer(n_topics=5)
+    topics = analyzer.fit_transform(comments_list)
 """
 
 import re
 import nltk
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 import numpy as np
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.decomposition import LatentDirichletAllocation
@@ -33,9 +41,32 @@ from nltk.tokenize import word_tokenize
 
 
 class LDAAnalyzer:
-    """Analizador de temas usando Latent Dirichlet Allocation"""
+    """
+    Analizador de temas usando Latent Dirichlet Allocation (LDA).
+    
+    Identifica automáticamente los temas principales en una colección
+    de documentos de texto mediante aprendizaje no supervisado.
+    
+    Attributes:
+        n_topics: Número de topics a identificar
+        n_top_words: Número de palabras por topic
+        fitted: Indica si el modelo ya fue entrenado
+    """
     
     def __init__(self, n_topics: int = 5, n_top_words: int = 10):
+        """
+        Inicializa el analizador LDA.
+        
+        Args:
+            n_topics: Número de temas a identificar (default: 5)
+            n_top_words: Número de palabras representativas por tema (default: 10)
+        """
+        # Validate parameters
+        if n_topics < 1:
+            raise ValueError("n_topics must be at least 1")
+        if n_top_words < 1:
+            raise ValueError("n_top_words must be at least 1")
+            
         self.n_topics = n_topics
         self.n_top_words = n_top_words
         self.lemmatizer = WordNetLemmatizer()
@@ -78,7 +109,21 @@ class LDAAnalyzer:
         self.feature_names = None
     
     def preprocess_text(self, text: str) -> str:
-        """Preprocesa el texto: clean, tokenize, lemmatize"""
+        """
+        Preprocesa el texto para análisis LDA.
+        
+        Limpia el texto eliminando URLs, caracteres especiales y aplicando
+        lematización para normalizar las palabras.
+        
+        Args:
+            text: Texto raw a procesar
+            
+        Returns:
+            Texto preprocesado listo para análisis
+        """
+        # Handle None or non-string input
+        if not isinstance(text, str):
+            return ""
         
         # Convert to lowercase
         text = text.lower()
@@ -92,23 +137,43 @@ class LDAAnalyzer:
         # Tokenize
         try:
             tokens = word_tokenize(text)
-        except:
+        except Exception:
             tokens = text.split()
         
         # Lemmatize and filter
         cleaned_tokens = []
         for token in tokens:
             if len(token) > 2 and token not in self.stop_words:
-                lemma = self.lemmatizer.lemmatize(token)
+                try:
+                    lemma = self.lemmatizer.lemmatize(token)
+                except Exception:
+                    lemma = token
                 if lemma not in self.stop_words and len(lemma) > 2:
                     cleaned_tokens.append(lemma)
         
         return ' '.join(cleaned_tokens)
     
     def fit_transform(self, comments: List[str]) -> Dict:
-        """Entrena el modelo LDA y extrae temas"""
+        """
+        Entrena el modelo LDA y extrae los temas principales.
         
-        if not comments:
+        Args:
+            comments: Lista de textos/comentarios a analizar
+            
+        Returns:
+            Diccionario con los topics identificados y sus palabras clave
+            
+        Raises:
+            ValueError: Si la lista de comentarios está vacía o es inválida
+        """
+        # Validate input
+        if comments is None:
+            return {"error": "Comments cannot be None"}
+        
+        if not isinstance(comments, (list, tuple)):
+            return {"error": "Comments must be a list or tuple"}
+        
+        if len(comments) == 0:
             return {"error": "No comments provided"}
         
         # Preprocess all comments
