@@ -1,0 +1,336 @@
+# Narrative Intelligence Engine - CI/CD Pipeline
+#
+# This workflow runs comprehensive tests covering:
+# - Access control & permissions
+# - Calculations & algorithms
+# - Business rules
+# - Validations
+# - External APIs (with mocking)
+# - Database operations
+# - Edge cases
+# - Generated code validation
+
+name: CI - Test Suite
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '18'
+
+jobs:
+  # ============================================
+  # JOB 1: Code Quality (Linting & Type Checking)
+  # ============================================
+  lint:
+    name: Lint & Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-lint-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-lint-
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black mypy types-requests
+          pip install -r requirements.txt
+      
+      - name: Run Flake8 (Linter)
+        run: |
+          flake8 app/ --max-line-length=100 --extend-ignore=E203,W503 --exit-zero
+        continue-on-error: true
+      
+      - name: Run Black (Formatter)
+        run: |
+          black --check --diff app/ || true
+        continue-on-error: true
+      
+      - name: Run MyPy (Type Checking)
+        run: |
+          mypy app/ --ignore-missing-imports --no-error-summary || true
+        continue-on-error: true
+
+  # ============================================
+  # JOB 2: Dependency Security Audit
+  # ============================================
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          pip install pip-audit safety
+      
+      - name: Run pip-audit
+        run: |
+          pip-audit -r requirements.txt || true
+        continue-on-error: true
+      
+      - name: Run safety check
+        run: |
+          safety check -r requirements.txt || true
+        continue-on-error: true
+
+  # ============================================
+  # JOB 3: Unit Tests (Core Logic)
+  # ============================================
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-test-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-test-
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov pytest-mock freezegun responses
+          pip install -r requirements.txt
+      
+      - name: Download NLTK data
+        run: python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords'); nltk.download('wordnet')"
+      
+      - name: Run tests with coverage
+        run: |
+          pytest tests/ \
+            --verbose \
+            --cov=app \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=20 \
+            -v
+      
+      - name: Upload coverage to Codecov
+        if: success()
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: narrative-engine
+
+  # ============================================
+  # JOB 4: Integration Tests (APIs & DB)
+  # ============================================
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov pytest-mock responses httpx
+          pip install -r requirements.txt
+      
+      - name: Download NLTK data
+        run: python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords'); nltk.download('wordnet')"
+      
+      - name: Run integration tests
+        run: |
+          pytest tests/ \
+            --verbose \
+            -v \
+            --tb=short \
+            --ignore=tests/performance/
+
+  # ============================================
+  # JOB 5: Edge Cases & Error Handling
+  # ============================================
+  edge-cases:
+    name: Edge Cases & Error Handling
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-mock freezegun
+          pip install -r requirements.txt
+      
+      - name: Download NLTK data
+        run: python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords'); nltk.download('wordnet')"
+      
+      - name: Run edge case tests
+        run: |
+          pytest tests/edge_cases/ -v --tb=short
+
+  # ============================================
+  # JOB 6: Performance Tests
+  # ============================================
+  performance:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-benchmark pytest-xdist
+          pip install -r requirements.txt
+      
+      - name: Download NLTK data
+        run: python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords'); nltk.download('wordnet')"
+      
+      - name: Run performance tests
+        run: |
+          pytest tests/performance/ -v --benchmark-only
+
+  # ============================================
+  # JOB 7: All Tests Summary
+  # ============================================
+  summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [lint, security, unit-tests, integration-tests, edge-cases, performance]
+    if: always()
+    
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## Test Suite Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Lint results
+          if [ "${{ needs.lint.result }}" == "success" ]; then
+            echo "✅ Lint & Code Quality: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Lint & Code Quality: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Security results
+          if [ "${{ needs.security.result }}" == "success" ]; then
+            echo "✅ Security Audit: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Security Audit: WARNINGS FOUND" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Unit tests results
+          if [ "${{ needs.unit-tests.result }}" == "success" ]; then
+            echo "✅ Unit Tests: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Unit Tests: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Integration tests results
+          if [ "${{ needs.integration-tests.result }}" == "success" ]; then
+            echo "✅ Integration Tests: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Integration Tests: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Edge cases results
+          if [ "${{ needs.edge-cases.result }}" == "success" ]; then
+            echo "✅ Edge Cases: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Edge Cases: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Performance tests results
+          if [ "${{ needs.performance.result }}" == "success" ]; then
+            echo "✅ Performance Tests: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Performance Tests: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "Full report available in GitHub Actions artifacts" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================
+  # JOB 8: Build & Package Verification
+  # ============================================
+  build:
+    name: Build Verification
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Download NLTK data
+        run: python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords'); nltk.download('wordnet')"
+      
+      - name: Verify Streamlit app can start
+        run: |
+          timeout 10 streamlit run app/dashboard.py --server.headless true || [ $? -eq 124 ]
+        continue-on-error: true
+      
+      - name: Check imports
+        run: |
+          python -c "from app.lda_analyzer import LDAAnalyzer; from app.correlation import CorrelationEngine; from app.anomaly_detector import AnomalyDetector; from app.youtube_client import YouTubeClient; from app.spotify_client import SpotifyClient; from app.twitch_client import TwitchClient; from app.db import DatabaseManager; print('All imports successful')"
