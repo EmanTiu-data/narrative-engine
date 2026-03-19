@@ -11,8 +11,6 @@ As a data analyst, the vision is to build an engine that:
 2. **Generates insights** explaining engagement and performance
 3. **Detects anomalies** that signal opportunities or potential problems
 
-This engine is part of a larger ecosystem called **Streamer-Pulse** that aims to democratize data analysis in the streaming industry.
-
 ---
 
 ## 🚀 Quick Start
@@ -247,7 +245,7 @@ TWITCH_CLIENT_SECRET=your_client_secret
 
 ---
 
-## 🤝 Contributing
+##  Contributing
 
 1. Fork the repository
 2. Create a branch (`git checkout -b feature/new-feature`)
@@ -267,4 +265,3 @@ MIT License - see LICENSE file for details.
 
 **EmanTiu** - [@EmanTiu-data](https://github.com/EmanTiu-data)
 
-Built with ❤️ for the data analyst community.
