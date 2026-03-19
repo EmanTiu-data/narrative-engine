@@ -1,80 +1,80 @@
 # The Narrative Intelligence Engine
 
-🧠 Advanced NLP, Cross-Platform Correlation & Anomaly Detection
+🧠 AI-Powered Content Creator Analytics
 
 ## 🎯 Objective
 
-Este proyecto nació de la necesidad de entender **por qué** ciertos creadores de contenido prosperan mientras otros no, analisando patrones en múltiples plataformas (YouTube, Spotify, Twitch).
+This project was born from the need to understand **why** certain content creators thrive while others don't, by analyzing patterns across multiple platforms (YouTube, Spotify, Twitch).
 
-Como analista de datos, mi visión es construir un motor que:
-1. **Extraiga conocimiento** de grandes volúmenes de comentarios y métricas
-2. **Identifique correlaciones** entre plataformas para predecir tendencias
-3. **Detecte anomalías** que señalen oportunidades o problemas potenciales
+As a data analyst, the vision is to build an engine that:
+1. **Extracts knowledge** from large volumes of comments and metrics
+2. **Generates insights** explaining engagement and performance
+3. **Detects anomalies** that signal opportunities or potential problems
 
-Este engine es parte de un ecosistema más grande llamado **Streamer-Pulse** que busca democratizar el análisis de datos en la industria del streaming.
+This engine is part of a larger ecosystem called **Streamer-Pulse** that aims to democratize data analysis in the streaming industry.
 
 ---
 
 ## 🚀 Quick Start
 
 ```bash
-# 1. Clonar el repositorio
+# 1. Clone the repository
 git clone https://github.com/EmanTiu-data/narrative-engine.git
 cd narrative-engine
 
-# 2. Crear entorno virtual (recomendado)
+# 2. Create virtual environment (recommended)
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
-# o: venv\Scripts\activate  # Windows
+# or: venv\Scripts\activate  # Windows
 
-# 3. Instalar dependencias
+# 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Descargar datos NLTK (automático, pero puedes hacerlo manual)
+# 4. Download NLTK data (automatic, but you can do it manually)
 python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords'); nltk.download('wordnet')"
 
-# 5. Configurar API keys
-cp .env.example .env  # Si existe .env.example
-# Editar .env con tus credenciales
+# 5. Configure API keys
+cp .env.example .env  # If .env.example exists
+# Edit .env with your credentials
 
-# 6. Correr el dashboard
+# 6. Run the dashboard
 streamlit run app/dashboard.py
 ```
 
 ---
 
-## 📋 Requisitos
+## 📋 Requirements
 
 - **Python 3.11+**
-- APIs de YouTube, Spotify y Twitch (crea tus credenciales en los开发者 portals)
+- YouTube, Spotify, and Twitch APIs (create credentials in their developer portals)
 
-### APIs necesarias
+### Required APIs
 
-| Plataforma | Portal de Desarrollo | Permisos |
-|------------|---------------------|----------|
+| Platform | Developer Portal | Notes |
+|----------|-----------------|-------|
 | YouTube | [Google Cloud Console](https://console.cloud.google.com/) | YouTube Data API v3 |
-| Spotify | [Spotify Developer](https://developer.spotify.com/dashboard) | - |
-| Twitch | [Twitch Dev Console](https://dev.twitch.tv/console) | - |
+| Spotify | [Spotify Developer](https://developer.spotify.com/dashboard) | Client Credentials flow |
+| Twitch | [Twitch Dev Console](https://dev.twitch.tv/console) | Client Credentials flow |
 
 ---
 
-## 📁 Estructura del Proyecto
+## 📁 Project Structure
 
 ```
 narrative-engine/
 ├── app/
-│   ├── __init__.py          # Configuración del proyecto
-│   ├── dashboard.py         # Interfaz Streamlit
-│   ├── lda_analyzer.py      # Análisis de temas (NLP)
-│   ├── correlation.py       # Correlación multi-plataforma
-│   ├── anomaly_detector.py  # Detección de anomalías
-│   ├── db.py                # Gestor de base de datos
-│   ├── youtube_client.py    # Cliente YouTube API
-│   ├── spotify_client.py    # Cliente Spotify API
-│   └── twitch_client.py     # Cliente Twitch API
-├── data/                    # Datos persists (auto-creado)
-│   └── narrative.db        # SQLite database
-├── tests/                   # Suite de tests
+│   ├── __init__.py          # Project configuration
+│   ├── dashboard.py         # Streamlit interface
+│   ├── lda_analyzer.py      # Topic Analysis (NLP)
+│   ├── anomaly_detector.py  # Anomaly Detection
+│   ├── insights_engine.py   # AI Insights Generator
+│   ├── db.py                # Database Manager
+│   ├── youtube_client.py    # YouTube API Client
+│   ├── spotify_client.py    # Spotify API Client
+│   └── twitch_client.py     # Twitch API Client
+├── data/                    # Persistent data (auto-created)
+│   └── narrative.db         # SQLite database
+├── tests/                   # Test suite
 │   ├── conftest.py
 │   ├── test_*.py
 │   ├── edge_cases/
@@ -91,13 +91,31 @@ narrative-engine/
 
 ## 🔬 Features
 
-### Fase 1: NLP Avanzado (LDA)
+### Insights Engine (AI-Powered)
 
-Extrae automáticamente los temas principales de miles de comentarios:
+Generates explanations for why content performs well or poorly:
 
-- **Topic Extraction**: Identifica hasta N temas usando Latent Dirichlet Allocation
-- **Automatic Labeling**: Clasifica topics en categorías (skill, entertainment, frequency, etc.)
-- **Ejemplo**: `"40% hablan sobre habilidad técnica"` → extraído automáticamente
+- **Video Insights**: On-demand engagement explanations for individual YouTube videos
+- **Channel Insights**: Overall performance analysis for channels/artists/streamers
+- **Rating System**: S/A+/A/B/C/D ratings based on engagement metrics
+
+```python
+from app.insights_engine import InsightsEngine
+
+engine = InsightsEngine()
+insight = engine.generate_video_insight(video_data, channel_avg)
+print(insight["insight_text"])
+# Output: "🟡A - 151% more engagement than average. 
+# Drivers: elevated likes, high comment volume, superior reach."
+```
+
+### Topic Analysis (LDA)
+
+Automatically extracts main topics from thousands of comments:
+
+- **Topic Extraction**: Identifies up to N topics using Latent Dirichlet Allocation
+- **Automatic Labeling**: Classifies topics into categories (skill, entertainment, frequency, etc.)
+- **Example**: `"40% talk about technical skill"` → automatically extracted
 
 ```python
 from app.lda_analyzer import LDAAnalyzer
@@ -107,67 +125,90 @@ topics = analyzer.fit_transform(comments_list)
 print(topics)
 ```
 
-### Fase 2: Correlación Multi-Plataforma
+### Anomaly Detection
 
-Descubre relaciones entre métricas de diferentes plataformas:
+Identifies outliers and unusual patterns:
 
-- **Pearson Correlation**: Mide fuerza y dirección de relaciones lineales
-- **Lag Analysis**: ¿Un pico en Twitch predice un pico en YouTube +3 días?
-- **Graceful Degradation**: Funciona incluso si una plataforma falla
-
-```python
-from app.correlation import CorrelationEngine
-
-engine = CorrelationEngine()
-result = engine.calculate_pearson(youtube_series, twitch_series)
-print(f"Correlation: {result['r']:.3f}")
-```
-
-### Fase 3: Detección de Anomalías
-
-Identifica outliers y patrones inusuales:
-
-- **Z-Score**: Detecta valores a más de 3σ de la media
-- **Isolation Forest**: Algoritmo de ML para patrones complejos
-- **Combined Detection**: Combina múltiples métodos para mayor precisión
+- **Z-Score**: Detects values beyond 3σ from the mean
+- **Isolation Forest**: ML algorithm for complex patterns
+- **Combined Detection**: Combines multiple methods for better accuracy
 
 ```python
-from app.anomaly_detector import AnomalyDetector
+from app.anomaly_detector import VideoAnomalyDetector
 
-detector = AnomalyDetector()
-result = detector.detect_combined(metrics_data)
-print(f"Anomalías detectadas: {result['n_outliers']}")
+detector = VideoAnomalyDetector()
+result = detector.analyze_video_metrics(videos)
+print(f"Anomalies detected: {result['total_outliers']}")
 ```
 
 ---
 
-## 💾 Persistencia de Datos
+## 📊 Dashboard
 
-Los datos se almacenan automáticamente en SQLite:
+The dashboard includes 3 main tabs:
+
+### 1. Data Collection
+- Collect data from YouTube, Spotify, and Twitch APIs
+- Stores videos, tracks, comments, and stats in SQLite
+
+### 2. Topic Analysis (LDA)
+- Visualize extracted topics from comments
+- Interactive charts showing topic distribution
+
+### 3. Analytics & Insights
+- **YouTube Top 3**: Best performing videos with AI-generated insights
+- **Spotify Top 3**: Featured tracks with album position comparison
+- **Twitch Stats**: Stream metrics with duration recommendations
+- **Cross-Platform Comparison**: Recommendations based on all platforms
+
+### Unified Artist/Streamer Insight
+Generate a complete analysis with one click:
+
+```
+📺 YouTube - Channel Name
+- 50 videos analyzed
+- Average Engagement: 12.5%
+- Top Performers: 8
+
+🎵 Spotify - Artist Name
+- 19 tracks across 9 albums
+- Average Track Position: 2.3
+
+🎮 Twitch - Streamer Name
+- 100 streams analyzed
+- Average Views/Stream: 247,898
+- Status: 🔴 LIVE
+```
+
+---
+
+## 💾 Data Persistence
+
+Data is automatically stored in SQLite:
 
 ```python
 from app.db import DatabaseManager
 
 db = DatabaseManager()
 db.insert_youtube_video(video_data)
-db.insert_topic(channel_name, topic_id, topic_name, distribution)
-db.get_correlations()
+db.save_video_insight(video_id, "youtube", insight_data)
+db.get_youtube_comments(channel_name)
 ```
 
-La base de datos se crea automáticamente en `data/narrative.db`.
+The database is automatically created at `data/narrative.db`.
 
 ---
 
 ## 🧪 Testing
 
 ```bash
-# Correr todos los tests
+# Run all tests
 pytest tests/ -v
 
-# Tests con coverage
+# Tests with coverage
 pytest tests/ --cov=app --cov-report=html
 
-# Solo tests de rendimiento
+# Performance tests only
 pytest tests/performance/ -v
 ```
 
@@ -175,66 +216,55 @@ pytest tests/performance/ -v
 
 ## 🔧 Configuration
 
-### Variables de Entorno (.env)
+### Environment Variables (.env)
 
 ```env
 # YouTube
-YOUTUBE_API_KEY=tu_api_key_de_youtube
+YOUTUBE_API_KEY=your_youtube_api_key
 
 # Spotify
-SPOTIFY_CLIENT_ID=tu_client_id
-SPOTIFY_CLIENT_SECRET=tu_client_secret
+SPOTIFY_CLIENT_ID=your_client_id
+SPOTIFY_CLIENT_SECRET=your_client_secret
 
 # Twitch
-TWITCH_CLIENT_ID=tu_client_id
-TWITCH_CLIENT_SECRET=tu_client_secret
+TWITCH_CLIENT_ID=your_client_id
+TWITCH_CLIENT_SECRET=your_client_secret
 ```
 
 ---
 
 ## 🛠️ Tech Stack
 
-| Categoría | Tecnología | Propósito |
-|-----------|------------|-----------|
-| Dashboard | Streamlit | Interfaz web interactiva |
-| NLP | scikit-learn, NLTK | Topic extraction y preprocessing |
+| Category | Technology | Purpose |
+|----------|------------|---------|
+| Dashboard | Streamlit | Interactive web interface |
+| NLP | scikit-learn, NLTK | Topic extraction and preprocessing |
 | ML | scikit-learn | Isolation Forest, clustering |
-| Stats | scipy.stats | Correlación de Pearson |
-| Data | pandas, numpy | Manipulación de datos |
-| Database | SQLite | Persistencia local |
-| Visualization | Plotly | Gráficos interactivos |
+| Stats | scipy.stats | Pearson correlation |
+| Data | pandas, numpy | Data manipulation |
+| Database | SQLite | Local persistence |
+| Visualization | Plotly | Interactive charts |
 
 ---
 
-## 📊 Dashboard
+## 🤝 Contributing
 
-El dashboard incluye 4 tabs principales:
-
-1. **Data Collection**: Recolecta datos de APIs
-2. **Topic Analysis**: Visualiza topics extraídos con LDA
-3. **Correlations**: Mapa de calor de correlaciones
-4. **Anomalies**: Timeline con outliers marcados
-
----
-
-## 🤝 Contribuir
-
-1. Fork el repositorio
-2. Crea una branch (`git checkout -b feature/nueva-feature`)
-3. Commit tus cambios (`git commit -m 'Add nueva feature'`)
-4. Push a la branch (`git push origin feature/nueva-feature`)
-5. Abre un Pull Request
+1. Fork the repository
+2. Create a branch (`git checkout -b feature/new-feature`)
+3. Commit your changes (`git commit -m 'Add new feature'`)
+4. Push to the branch (`git push origin feature/new-feature`)
+5. Open a Pull Request
 
 ---
 
-## 📝 Licencia
+## 📝 License
 
-MIT License - ver archivo LICENSE para detalles.
+MIT License - see LICENSE file for details.
 
 ---
 
-## 👤 Autor
+## 👤 Author
 
 **EmanTiu** - [@EmanTiu-data](https://github.com/EmanTiu-data)
 
-Construido con ❤️ para la comunidad de analistas de datos.
+Built with ❤️ for the data analyst community.
