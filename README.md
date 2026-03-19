@@ -11,8 +11,6 @@ Como analista de datos, mi visión es construir un motor que:
 2. **Identifique correlaciones** entre plataformas para predecir tendencias
 3. **Detecte anomalías** que señalen oportunidades o problemas potenciales
 
-Este engine es parte de un ecosistema más grande llamado **Streamer-Pulse** que busca democratizar el análisis de datos en la industria del streaming.
-
 ---
 
 ## 🚀 Quick Start
@@ -217,7 +215,7 @@ El dashboard incluye 4 tabs principales:
 
 ---
 
-## 🤝 Contribuir
+## Contribuir
 
 1. Fork el repositorio
 2. Crea una branch (`git checkout -b feature/nueva-feature`)
@@ -236,5 +234,3 @@ MIT License - ver archivo LICENSE para detalles.
 ## 👤 Autor
 
 **EmanTiu** - [@EmanTiu-data](https://github.com/EmanTiu-data)
-
-Construido con ❤️ para la comunidad de analistas de datos.
